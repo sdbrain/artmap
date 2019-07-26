@@ -20,6 +20,11 @@ enum Node {
 
 #[derive(Debug, Clone, PartialEq)]
 struct NodeMeta {
+    // this holds the total size of the prefix and it
+    // could be bigger than the partial vector
+    // in the partial vector, we store only items
+    // that are < MAX_PREFIX len
+    prefix_len: usize,
     partial: Vec<u8>,
 }
 
