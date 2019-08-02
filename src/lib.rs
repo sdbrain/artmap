@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-const MAX_PREFIX: usize =  8;
+const MAX_PREFIX: usize = 8;
 
 #[derive(Debug)]
 pub struct Art {
@@ -37,7 +37,7 @@ struct Leaf {
 #[derive(Debug, Clone, PartialEq)]
 struct Node4 {
     meta: NodeMeta,
-    children: BTreeMap<Option<u8>, Box<Node>>
+    children: BTreeMap<Option<u8>, Box<Node>>,
 }
 
 #[derive(Debug, Clone)]
