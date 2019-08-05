@@ -2,6 +2,7 @@ use crate::{Art, Leaf, Node, Node4, NodeMeta, MAX_PREFIX};
 use std::borrow::{Borrow, BorrowMut};
 use std::cmp::min;
 use std::collections::BTreeMap;
+use std::f32::MAX;
 use std::mem::replace;
 use std::ops::DerefMut;
 
@@ -75,10 +76,8 @@ impl Art {
 
                         if !current.child_exists(&key, depth) {
                             let key_char = match key.get(depth) {
-                                Some(ch) => {
-                                    Some(*ch)
-                                }
-                                None => None
+                                Some(ch) => Some(*ch),
+                                None => None,
                             };
 
                             let leaf = Box::new(Node::Leaf(Leaf::new(key, value)));
@@ -91,47 +90,57 @@ impl Art {
                         continue;
                     }
 
-                    // prefix mismatch so have to split the node
-                    if current_prefix_len != current.prefix_len() {
-                        let mut node4 = Node4::new();
-                        let key_char = *&key[depth + current_prefix_len];
-                        node4.add_child(Box::new(Node::Leaf(Leaf::new(key, value))), Some(key_char));
-                        node4.meta.prefix_len = current_prefix_len;
-                        node4.meta.partial = current.partial()[..current_prefix_len]
+                    // create a new node to split at current_prefix_len
+                    let mut node4 = Node4::new();
+                    node4.meta.prefix_len = current_prefix_len;
+                    node4.meta.partial = current.partial()[..min(current_prefix_len, MAX_PREFIX)]
+                        .iter()
+                        .map(|i| i.clone())
+                        .collect();
+
+                    // fix up current node
+                    let new_prefix_len = current.prefix_len() - (current_prefix_len + 1);
+                    current.set_prefix_len(new_prefix_len);
+                    if current_prefix_len <= MAX_PREFIX {
+                        let new_partial = current
+                            .partial()
                             .iter()
-                            .map(|i| i.clone())
+                            .skip(current_prefix_len + 1)
+                            .map(|i| *i)
+                            .take(min(current.prefix_len(), MAX_PREFIX))
                             .collect();
+                        // extract the key char before munging the partial
+                        let key_char = current.partial()[current_prefix_len];
+                        current.set_partial(new_partial);
 
-                        // fix up current node
-                        let old_node = replace(&mut *current, Node::Node4(node4)).unwrap_node4();
-                        if let Some(mut node) = old_node {
-                            // the reason we add +1 is because the key that we are trying to add
-                            // has a prefix match of current_prefix_len and we are going to be using
-                            // the +1 character as the pivot in the trie. e.g. AMD, AMDs, AMBs are inserted
-                            // in order. So when AMBs is inserted, the current_prefix_len will match till AM
-                            // so will be 2. The previous prefix len for AMD and AMDs would have been AMD, so
-                            // now the pivot character for the new node would be D and this would mean that
-                            // the prefix_len would be 0 for the old node4 and the prefix vec would be empty
-                            // the ART paper uses memmove which will leave residual items in the partial vec
-                            let key_char = node.meta.partial[current_prefix_len];
-                            node.meta.prefix_len = node.prefix_len() - (current_prefix_len + 1);
-                            node.meta.partial = node
-                                .meta
-                                .partial
+                        // place old current as a child under
+                        let old_node = replace(&mut *current, Node::Node4(node4));
+                        current.add_child(Box::new(old_node), Some(key_char));
+                    } else {
+                        let leaf = current.minimum();
+                        let (key_char, new_partial) = if let Node::Leaf(leaf) = leaf {
+                            let new_partial: Vec<u8> = leaf
+                                .key
                                 .iter()
-                                .skip(current_prefix_len + 1)
-                                .map(|i| *i)
+                                .skip(depth + current_prefix_len)
+                                .take(min(current.prefix_len(), MAX_PREFIX))
+                                .map(|e| *e)
                                 .collect();
-
-                            if let Node::Node4(n) = current {
-                                n.add_child(Box::new(Node::Node4(node)), Some(key_char));
-                            }
-                            count += 1;
-                            break;
-                        }
-
-                        break;
+                            let key_char = leaf.key[depth+current_prefix_len];
+                            (key_char, new_partial)
+                        } else {
+                            panic!("Should not be here");
+                        };
+                        current.set_partial(new_partial);
+                        // place old current as a child under
+                        let old_node = replace(&mut *current, Node::Node4(node4));
+                        current.add_child(Box::new(old_node), Some(key_char));
                     }
+
+                    let key_char = *&key[depth + current_prefix_len];
+                    current.add_child(Box::new(Node::Leaf(Leaf::new(key, value))), Some(key_char));
+                    count += 1;
+                    break;
                     break;
                 }
             }
@@ -143,7 +152,25 @@ impl Art {
     fn calculate_prefix_mismatch(node: &Node, key: &Vec<u8>, depth: usize) -> usize {
         // match from depth..max_match_len
         let max_match_len = min(min(MAX_PREFIX, node.prefix_len()), key.len() - depth);
-        node.match_key(key, max_match_len, depth).unwrap_or(0)
+        let mut mismatch_idx = node.match_key(key, max_match_len, depth).unwrap_or(0);
+        if mismatch_idx < MAX_PREFIX {
+            mismatch_idx
+        } else {
+            // find leaf following the minimum node (None key)
+            let leaf = node.minimum();
+            if let Node::Leaf(leaf) = leaf {
+                let limit = min(leaf.key.len(), key.len()) - depth;
+                while mismatch_idx < limit {
+                    if leaf.key[mismatch_idx + depth] != key[mismatch_idx + depth] {
+                        break;
+                    }
+                    mismatch_idx += 1;
+                }
+                mismatch_idx
+            } else {
+                0
+            }
+        }
     }
 
     fn calculate_partial(key: &Vec<u8>, depth: usize, prefix_len: usize) -> Vec<u8> {
@@ -175,6 +202,51 @@ impl Art {
 }
 
 impl Node {
+    fn minimum(&self) -> &Node {
+        let mut tmp_node = self;
+        loop {
+            match tmp_node {
+                Node::Leaf(leaf) => {
+                    return self;
+                }
+                Node::Node4(node4) => match node4.children.get(&None) {
+                    Some(node) => {
+                        tmp_node = node.borrow();
+                        continue;
+                    }
+                    None => {
+                        tmp_node = node4.children.iter().nth(0).unwrap().1;
+                    }
+                },
+                Node::None => {
+                    panic!("should not be here");
+                }
+            }
+        }
+        &Node::None
+    }
+    fn set_prefix_len(&mut self, new_prefix_len: usize) {
+        match self {
+            Node::Node4(node4) => {
+                node4.meta.prefix_len = new_prefix_len;
+            }
+            _ => {
+                panic!("Prefix len is not applicable for node of this type");
+            }
+        }
+    }
+
+    fn set_partial(&mut self, new_partial: Vec<u8>) {
+        match self {
+            Node::Node4(node4) => {
+                node4.meta.partial = new_partial;
+            }
+            _ => {
+                panic!("Prefix len is not applicable for node of this type");
+            }
+        }
+    }
+
     fn add_child(&mut self, node: Box<Node>, key_char: Option<u8>) {
         match self {
             Node::Node4(node4) => {
@@ -292,16 +364,14 @@ impl Node4 {
     }
 
     fn match_key(&self, key: &Vec<u8>, max_match_len: usize, depth: usize) -> Option<usize> {
-        Some(
-            self.meta
-                .partial
-                .iter()
-                .zip(key.iter())
-                .skip(depth)
-                .take_while(|(i, j)| i == j)
-                .take(max_match_len)
-                .count(),
-        )
+        let mut idx = 0;
+        while idx < max_match_len {
+            if self.meta.partial[idx] != key[depth + idx] {
+                return Some(idx);
+            }
+            idx += 1;
+        }
+        Some(idx)
     }
 
     fn add_child(&mut self, node: Box<Node>, key_char: Option<u8>) {
@@ -312,6 +382,9 @@ impl Node4 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::VecDeque;
+    use std::fs::{read, File};
+    use std::io::{BufRead, BufReader};
 
     fn _insert(art: &mut Art, items: &Vec<&str>) {
         items.iter().for_each(|item| {
@@ -593,6 +666,116 @@ mod tests {
             }
         } else {
             panic!("Should be a node 4");
+        }
+    }
+
+    #[test]
+    fn test_grow() {
+        let mut art = Art::new();
+        let mut items = VecDeque::new();
+        for i in 1..100 {
+            items.push_front(i as u8);
+        }
+        for item in items {
+            let item = Vec::from(vec![item]);
+            art.insert(item.clone(), item);
+        }
+
+        dbg!(art);
+    }
+
+    fn print_art(art: &Art) {
+        let to_string = |digits: &Vec<u8>| -> String {
+            let mut buffer = String::new();
+            digits.iter().for_each(|c| {
+                buffer.push(*c as char);
+            });
+            buffer
+        };
+
+        // dump tree
+        let mut stack = Vec::new();
+        stack.push((0 as i8, art.root.borrow()));
+        let mut indent = 0;
+        loop {
+            let (current_char, current) = match stack.pop() {
+                Some(item) => {
+                    if item.0 == -1 {
+                        indent -= 5;
+                        continue;
+                    }
+                    item
+                }
+                None => break,
+            };
+
+            match current {
+                Node::Leaf(leaf) => {
+                    println!(
+                        "{tag:>indent$}Leaf: {key:?} = {val:?}",
+                        indent = indent,
+                        tag = "",
+                        key = to_string(&leaf.key),
+                        val = to_string(&leaf.value)
+                    );
+                }
+                Node::Node4(node4) => {
+                    // print node metadata
+                    println!(
+                        "{tag:>indent$} char={char} Node4({clen}) {keys:?} - ({plen}) [{partial:?}]",
+                        indent = indent,
+                        tag = "",
+                        char = current_char as u8 as char,
+                        clen = node4.children.len(),
+                        keys = &node4.children.keys().map(|k| {
+                            match k {
+                                Some(v) => *v,
+                                None => 0
+                            }
+                        }).map(|k| k as char).collect::<Vec<char>>(),
+                        plen = node4.meta.prefix_len,
+                        partial = &node4.meta.partial.iter().map(|c| *c as char).collect::<Vec<char>>()
+                    );
+
+                    // push a marker for dealing with indentation
+                    indent += 5;
+                    let x: i8 = -1;
+                    stack.push((x, &Node::None));
+
+                    //queue up the nodes for visiting
+                    for (character, child_node) in node4.children.iter() {
+                        stack.push((character.unwrap_or(0) as i8, child_node.borrow()));
+                    }
+
+                }
+                Node::None => {
+                    dbg!("should not be here");
+                    break;
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_small_batch_insert() {
+        let mut art = Art::new();
+        let fil = File::open("/tmp/words.txt").unwrap();
+        let mut reader = BufReader::new(fil);
+        loop {
+            let mut buffer = String::new();
+            let x = reader.read_line(&mut buffer);
+            if x.is_err() || buffer.is_empty() {
+                break;
+            }
+//            println!("Inserting {}", &buffer.trim());
+//            if buffer.trim() == "Abbott".to_string() {
+//                print_art(&art);
+//                println!("something");
+//            }
+            art.insert(
+                buffer.trim().clone().as_bytes().to_vec(),
+                buffer.trim().clone().as_bytes().to_vec(),
+            );
         }
     }
 }
