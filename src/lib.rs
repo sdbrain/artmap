@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use hashbrown::HashMap;
 
 const MAX_PREFIX: usize = 8;
 
@@ -37,7 +38,7 @@ struct Leaf {
 #[derive(Debug, Clone, PartialEq)]
 struct Node4 {
     meta: NodeMeta,
-    children: BTreeMap<Option<u8>, Box<Node>>,
+    children: HashMap<Option<u8>, Box<Node>>,
 }
 
 #[derive(Debug, Clone)]

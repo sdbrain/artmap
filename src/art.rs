@@ -1,10 +1,10 @@
 use crate::{Art, Leaf, Node, Node4, NodeMeta, MAX_PREFIX};
 use std::borrow::{Borrow, BorrowMut};
 use std::cmp::min;
-use std::collections::BTreeMap;
 use std::f32::MAX;
 use std::mem::replace;
 use std::ops::DerefMut;
+use hashbrown::HashMap;
 
 impl Art {
     pub fn new() -> Self {
@@ -16,6 +16,12 @@ impl Art {
 
     pub fn len(&self) -> usize {
         self.size
+    }
+
+    pub fn search(&self, key: &Vec<u8>) -> Option<&Vec<u8>> {
+
+
+        None
     }
 
     pub fn insert(&mut self, key: Vec<u8>, value: Vec<u8>) {
@@ -215,7 +221,9 @@ impl Node {
                         continue;
                     }
                     None => {
-                        tmp_node = node4.children.iter().nth(0).unwrap().1;
+                        let mut v = node4.children.keys().map(|x| x.clone()).collect::<Vec<Option<u8>>>();
+                        v.sort_unstable();
+                        tmp_node = node4.children.get(v.first().unwrap()).unwrap();
                     }
                 },
                 Node::None => {
@@ -351,7 +359,7 @@ impl Node4 {
                 prefix_len: 0,
                 partial: Vec::with_capacity(MAX_PREFIX),
             },
-            children: BTreeMap::new(),
+            children: HashMap::new(),
         }
     }
 
@@ -385,6 +393,7 @@ mod tests {
     use std::collections::VecDeque;
     use std::fs::{read, File};
     use std::io::{BufRead, BufReader};
+    use hashbrown::HashMap;
 
     fn _insert(art: &mut Art, items: &Vec<&str>) {
         items.iter().for_each(|item| {
@@ -777,5 +786,18 @@ mod tests {
                 buffer.trim().clone().as_bytes().to_vec(),
             );
         }
+    }
+
+    #[test]
+    fn test_hash_map_key_extraction() {
+        let mut map = HashMap::new();
+        map.insert(Some(2), "david");
+        map.insert(Some(1), "david");
+
+        let mut v = map.keys().map(|x| x.unwrap_or(-1)).collect::<Vec<i32>>();
+        v.sort_unstable();
+        dbg!(v.first().unwrap());
+
+        dbg!(&map);
     }
 }
