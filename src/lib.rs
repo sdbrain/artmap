@@ -1,7 +1,6 @@
-use std::collections::BTreeMap;
 use hashbrown::HashMap;
 
-const MAX_PREFIX: usize = 8;
+const MAX_PREFIX: usize = 10;
 
 #[derive(Debug)]
 pub struct Art {
