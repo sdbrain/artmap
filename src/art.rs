@@ -1,9 +1,11 @@
 use crate::{Art, Leaf, Node, Node4, NodeMeta, MAX_PREFIX};
+use hashbrown::HashMap;
 use std::borrow::Borrow;
 use std::cmp::min;
 use std::mem::replace;
 use std::ops::DerefMut;
-use hashbrown::HashMap;
+use xi_rope::compare;
+use xi_rope::compare::ne_idx;
 
 impl Art {
     pub fn new() -> Self {
@@ -17,21 +19,32 @@ impl Art {
         self.size
     }
 
+    fn equals(one: &[u8], two: &[u8]) -> bool {
+        if one.len() != two.len() {
+            false
+        } else {
+            // use simd to compare..
+            let res = ne_idx(one, two);
+            match res {
+                Some(_) => false,
+                None => true
+            }
+        }
+    }
+
     pub fn search(&self, key: &Vec<u8>) -> Option<&Vec<u8>> {
         let mut stack: Vec<&Node> = Vec::new();
         stack.push(self.root.borrow());
         let mut depth: usize = 0;
         loop {
             let current = match stack.pop() {
-                Some(item) => {
-                    item
-                }
+                Some(item) => item,
                 None => break,
             };
 
             match current {
                 Node::Leaf(leaf) => {
-                    if leaf.key == *key {
+                    if Art::equals(leaf.key.as_slice(), key.as_slice()) {
                         return Some(&leaf.value);
                     } else {
                         break;
@@ -43,7 +56,12 @@ impl Art {
             if current.prefix_len() > 0 {
                 let prefix_len = current.prefix_match(key, depth);
                 // prefix does not match, stop
-                if prefix_len != min(min(MAX_PREFIX, current.prefix_len()), current.partial().len()) {
+                if prefix_len
+                    != min(
+                    min(MAX_PREFIX, current.prefix_len()),
+                    current.partial().len(),
+                )
+                {
                     break;
                 }
                 depth += current.prefix_len();
@@ -56,7 +74,7 @@ impl Art {
                     stack.push(node);
                     depth += 1;
                 }
-                None => break
+                None => break,
             }
         }
         None
@@ -191,7 +209,6 @@ impl Art {
         self.size += count;
     }
 
-
     fn calculate_partial(key: &Vec<u8>, depth: usize, prefix_len: usize) -> Vec<u8> {
         let mut partial: Vec<u8> = Vec::new();
         let max_partial = min(prefix_len, MAX_PREFIX);
@@ -262,7 +279,11 @@ impl Node {
                         continue;
                     }
                     None => {
-                        let mut v = node4.children.keys().map(|x| x.clone()).collect::<Vec<Option<u8>>>();
+                        let mut v = node4
+                            .children
+                            .keys()
+                            .map(|x| x.clone())
+                            .collect::<Vec<Option<u8>>>();
                         v.sort_unstable();
                         tmp_node = node4.children.get(v.first().unwrap()).unwrap();
                     }
@@ -448,10 +469,10 @@ impl Node4 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hashbrown::HashMap;
     use std::collections::VecDeque;
     use std::fs::{read, File};
     use std::io::{BufRead, BufReader};
-    use hashbrown::HashMap;
 
     fn _insert(art: &mut Art, items: &Vec<&str>) {
         items.iter().for_each(|item| {
@@ -507,10 +528,11 @@ mod tests {
             "Congo",
             "Congregationalist",
             "Congregationalist's",
-            "Congregationalists"
-        ].to_vec();
-//        let items = ["Ac", "Acropolis", "Acrux"].to_vec();
-//        let items = ["A", "AMD", "AMDs"].to_vec();
+            "Congregationalists",
+        ]
+            .to_vec();
+        //        let items = ["Ac", "Acropolis", "Acrux"].to_vec();
+        //        let items = ["A", "AMD", "AMDs"].to_vec();
         _insert(&mut art, &items);
 
         for item in items.iter() {
@@ -521,31 +543,30 @@ mod tests {
             }
         }
 
-
-//        assert_eq!(art.len(), 2);
-//
-//        if let Node::Node4(node) = &art.root.borrow() {
-//            assert_eq!(node.meta.partial.len(), 1);
-//            assert_eq!(node.meta.partial, "A".as_bytes().to_vec());
-//            assert_eq!(node.children.len(), 2);
-//
-//            // all nodes should be of type leaf
-//            for (_, child) in node.children.iter() {
-//                match child.borrow() {
-//                    Node::Leaf(_) => {}
-//                    _ => panic!(" Node should be of type leaf"),
-//                }
-//            }
-//
-//            let A = node.children.get(&None);
-//            let M = node.children.get(&Some(*"M".as_bytes().first().unwrap()));
-//
-//            assert!(A.is_some());
-//            assert!(M.is_some());
-//        } else {
-//            // node is not of type node4 so fail
-//            panic!("Node should be of type node4 {:#?}", &art.root);
-//        }
+        //        assert_eq!(art.len(), 2);
+        //
+        //        if let Node::Node4(node) = &art.root.borrow() {
+        //            assert_eq!(node.meta.partial.len(), 1);
+        //            assert_eq!(node.meta.partial, "A".as_bytes().to_vec());
+        //            assert_eq!(node.children.len(), 2);
+        //
+        //            // all nodes should be of type leaf
+        //            for (_, child) in node.children.iter() {
+        //                match child.borrow() {
+        //                    Node::Leaf(_) => {}
+        //                    _ => panic!(" Node should be of type leaf"),
+        //                }
+        //            }
+        //
+        //            let A = node.children.get(&None);
+        //            let M = node.children.get(&Some(*"M".as_bytes().first().unwrap()));
+        //
+        //            assert!(A.is_some());
+        //            assert!(M.is_some());
+        //        } else {
+        //            // node is not of type node4 so fail
+        //            panic!("Node should be of type node4 {:#?}", &art.root);
+        //        }
     }
 
     #[test]
@@ -833,8 +854,14 @@ mod tests {
                         partial = &node4.meta.partial.iter().map(|c| *c as char).collect::<Vec<char>>()
                     );
 
-                    if node4.meta.prefix_len < MAX_PREFIX && node4.meta.partial.len() != node4.meta.prefix_len {
-                        eprintln!("{tag:>indent$} Error: partial len does not match prefix len", indent = indent, tag = "");
+                    if node4.meta.prefix_len < MAX_PREFIX
+                        && node4.meta.partial.len() != node4.meta.prefix_len
+                    {
+                        eprintln!(
+                            "{tag:>indent$} Error: partial len does not match prefix len",
+                            indent = indent,
+                            tag = ""
+                        );
                     }
 
                     // push a marker for dealing with indentation
@@ -910,5 +937,25 @@ mod tests {
                 buffer.trim().clone().as_bytes().to_vec(),
             );
         }
+    }
+
+    #[test]
+    fn test_simd_string_match() {
+        let a = "david".to_string();
+        let b = "brainard".to_string();
+        let c = "davidbrainard".to_string();
+        let d = "davibrainard".to_string();
+
+        let res = Art::equals(a.as_bytes(), a.as_bytes());
+        assert_eq!(true, res);
+
+        let res = Art::equals(a.as_bytes(), b.as_bytes());
+        assert_eq!(false, res);
+
+        let res = Art::equals(a.as_bytes(), c.as_bytes());
+        assert_eq!(false, res);
+
+        let res = Art::equals(a.as_bytes(), d.as_bytes());
+        assert_eq!(false, res);
     }
 }

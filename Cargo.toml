@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 fnv = "1.0.6"
 hashbrown = "0.5.0"
+xi-rope = "0.3.0"
 
 [dev-dependencies]
 criterion = "0.2.11"
