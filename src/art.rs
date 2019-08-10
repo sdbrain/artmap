@@ -43,7 +43,7 @@ impl Art {
             if current.prefix_len() > 0 {
                 let prefix_len = current.prefix_match(key, depth);
                 // prefix does not match, stop
-                if prefix_len != min(MAX_PREFIX, current.prefix_len()) {
+                if prefix_len != min(min(MAX_PREFIX, current.prefix_len()), current.partial().len()) {
                     break;
                 }
                 depth += current.prefix_len();
@@ -253,8 +253,8 @@ impl Node {
         let mut tmp_node = self;
         loop {
             match tmp_node {
-                Node::Leaf(_) => {
-                    return self;
+                Node::Leaf(leaf) => {
+                    return tmp_node;
                 }
                 Node::Node4(node4) => match node4.children.get(&None) {
                     Some(node) => {
@@ -332,7 +332,7 @@ impl Node {
                     } else {
                         None
                     }
-                } else if depth >= key.len() {
+                } else if depth == key.len() {
                     if let Some(child_node) = node4.children.get(&None) {
                         Some(child_node)
                     } else {
@@ -502,8 +502,24 @@ mod tests {
     #[test]
     fn test_insert_second_leaf() {
         let mut art = Art::new();
-        let items = ["Ac", "Acropolis", "Acrux"].to_vec();
+        // TODO add test cases for these cases
+        let items = [
+            "Congo",
+            "Congregationalist",
+            "Congregationalist's",
+            "Congregationalists"
+        ].to_vec();
+//        let items = ["Ac", "Acropolis", "Acrux"].to_vec();
+//        let items = ["A", "AMD", "AMDs"].to_vec();
         _insert(&mut art, &items);
+
+        for item in items.iter() {
+            let res = art.search(&item.as_bytes().to_vec());
+            if res.is_some() {
+                let st = std::str::from_utf8(res.unwrap()).unwrap();
+                println!("&st = {:#?}", &st);
+            }
+        }
 
 
 //        assert_eq!(art.len(), 2);
@@ -817,6 +833,10 @@ mod tests {
                         partial = &node4.meta.partial.iter().map(|c| *c as char).collect::<Vec<char>>()
                     );
 
+                    if node4.meta.prefix_len < MAX_PREFIX && node4.meta.partial.len() != node4.meta.prefix_len {
+                        eprintln!("{tag:>indent$} Error: partial len does not match prefix len", indent = indent, tag = "");
+                    }
+
                     // push a marker for dealing with indentation
                     indent += 5;
                     let x: i8 = -1;
@@ -852,15 +872,10 @@ mod tests {
         // check if you can find all the words
         let fil = File::open(f_name).unwrap();
         let reader = BufReader::new(fil);
-        print_art(&art);
         for line in reader.lines() {
             if line.is_ok() {
                 let line = line.unwrap();
                 let line = line.trim();
-//                println!("&line = {:#?}", &line);
-                if line == "Congregationalist" {
-                    println!("I am here");
-                }
                 let res = art.search(&line.as_bytes().to_vec());
                 if res.is_none() {
                     println!("could not find {}", line);
@@ -889,11 +904,6 @@ mod tests {
             let x = reader.read_line(&mut buffer);
             if x.is_err() || buffer.is_empty() {
                 break;
-            }
-            let check_words = ["Congregationalist"].to_vec();
-            let word = buffer.trim();
-            if check_words.contains(&word) {
-                println!("I am here");
             }
             art.insert(
                 buffer.trim().clone().as_bytes().to_vec(),
