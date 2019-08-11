@@ -5,11 +5,13 @@ extern crate art_rs;
 use art_rs::Art;
 use criterion::Criterion;
 use criterion::{black_box, BatchSize, Benchmark};
+use fnv::FnvHashMap;
+use hashbrown::HashMap;
 use radix_trie::Trie;
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::rc::Rc;
+use std::collections::BTreeMap;
 
 // "/usr/share/dict/words"
 static PATH: &str = "/tmp/words.txt";
@@ -121,7 +123,7 @@ fn search_radix_trie_b(c: &mut Criterion) {
     });
 }
 
-fn search_hash_map(map: Rc<HashMap<String, String>>) {
+fn search_hash_map(map: Rc<BTreeMap<String, String>>) {
     let input = File::open(PATH).unwrap();
     let input = BufReader::new(input);
     for (index, line) in input.lines().enumerate() {
@@ -134,7 +136,7 @@ fn search_hash_map(map: Rc<HashMap<String, String>>) {
 }
 
 fn search_hash_map_b(c: &mut Criterion) {
-    let mut map = HashMap::new();
+    let mut map = BTreeMap::new();
     let input = File::open(PATH).unwrap();
     let input = BufReader::new(input);
     for line in input.lines() {
@@ -153,9 +155,9 @@ fn search_hash_map_b(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-    //insert_radix_trie_b,
-    //insert_simple_trie_b,
-    //insert_hash_map_b,
+//    insert_radix_trie_b,
+//    insert_simple_trie_b,
+//    insert_hash_map_b,
     search_simple_trie_b,
     search_radix_trie_b,
     search_hash_map_b,

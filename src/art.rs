@@ -4,7 +4,6 @@ use std::borrow::Borrow;
 use std::cmp::min;
 use std::mem::replace;
 use std::ops::DerefMut;
-use xi_rope::compare;
 use xi_rope::compare::ne_idx;
 
 impl Art {
@@ -19,6 +18,10 @@ impl Art {
         self.size
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.size == 0
+    }
+
     fn equals(one: &[u8], two: &[u8]) -> bool {
         if one.len() != two.len() {
             false
@@ -27,12 +30,12 @@ impl Art {
             let res = ne_idx(one, two);
             match res {
                 Some(_) => false,
-                None => true
+                None => true,
             }
         }
     }
 
-    pub fn search(&self, key: &Vec<u8>) -> Option<&Vec<u8>> {
+    pub fn search(&self, key: &[u8]) -> Option<&[u8]> {
         let mut stack: Vec<&Node> = Vec::new();
         stack.push(self.root.borrow());
         let mut depth: usize = 0;
@@ -44,7 +47,7 @@ impl Art {
 
             match current {
                 Node::Leaf(leaf) => {
-                    if Art::equals(leaf.key.as_slice(), key.as_slice()) {
+                    if Art::equals(leaf.key.as_slice(), key) {
                         return Some(&leaf.value);
                     } else {
                         break;
@@ -156,7 +159,7 @@ impl Art {
                     node4.meta.prefix_len = current_prefix_len;
                     node4.meta.partial = current.partial()[..min(current_prefix_len, MAX_PREFIX)]
                         .iter()
-                        .map(|i| i.clone())
+                        .copied()
                         .collect();
 
                     // fix up current node
@@ -167,7 +170,7 @@ impl Art {
                             .partial()
                             .iter()
                             .skip(current_prefix_len + 1)
-                            .map(|i| *i)
+                            .copied()
                             .take(min(current.prefix_len(), MAX_PREFIX))
                             .collect();
                         // extract the key char before munging the partial
@@ -198,7 +201,7 @@ impl Art {
                         current.add_child(Box::new(old_node), Some(key_char));
                     }
 
-                    let key_char = *&key[depth + current_prefix_len];
+                    let key_char = key[depth + current_prefix_len];
                     current.add_child(Box::new(Node::Leaf(Leaf::new(key, value))), Some(key_char));
                     count += 1;
                     break;
@@ -238,13 +241,13 @@ impl Art {
 }
 
 impl Node {
-    fn prefix_match(&self, key: &Vec<u8>, depth: usize) -> usize {
+    fn prefix_match(&self, key: &[u8], depth: usize) -> usize {
         // match from depth..max_match_len
         let max_match_len = min(min(MAX_PREFIX, self.partial().len()), key.len() - depth);
         self.match_key(key, max_match_len, depth).unwrap_or(0)
     }
 
-    fn prefix_match_deep(&self, key: &Vec<u8>, depth: usize) -> usize {
+    fn prefix_match_deep(&self, key: &[u8], depth: usize) -> usize {
         let mut mismatch_idx = self.prefix_match(key, depth);
         if mismatch_idx < MAX_PREFIX {
             mismatch_idx
@@ -270,7 +273,7 @@ impl Node {
         let mut tmp_node = self;
         loop {
             match tmp_node {
-                Node::Leaf(leaf) => {
+                Node::Leaf(_) => {
                     return tmp_node;
                 }
                 Node::Node4(node4) => match node4.children.get(&None) {
@@ -282,7 +285,7 @@ impl Node {
                         let mut v = node4
                             .children
                             .keys()
-                            .map(|x| x.clone())
+                            .copied()
                             .collect::<Vec<Option<u8>>>();
                         v.sort_unstable();
                         tmp_node = node4.children.get(v.first().unwrap()).unwrap();
@@ -325,7 +328,7 @@ impl Node {
         }
     }
 
-    fn child_exists(&self, key: &Vec<u8>, depth: usize) -> bool {
+    fn child_exists(&self, key: &[u8], depth: usize) -> bool {
         // find the child that corresponds to key[depth]
         match self {
             Node::Node4(node4) => {
@@ -342,7 +345,7 @@ impl Node {
         }
     }
 
-    fn find_child(&self, key: &Vec<u8>, depth: usize) -> Option<&Node> {
+    fn find_child(&self, key: &[u8], depth: usize) -> Option<&Node> {
         // find the child that corresponds to key[depth]
         match self {
             Node::Node4(node4) => {
@@ -367,7 +370,7 @@ impl Node {
         }
     }
 
-    fn find_child_mut(&mut self, key: &Vec<u8>, depth: usize) -> Option<&mut Node> {
+    fn find_child_mut(&mut self, key: &[u8], depth: usize) -> Option<&mut Node> {
         // find the child that corresponds to key[depth]
         match self {
             Node::Node4(node4) => {
@@ -399,14 +402,14 @@ impl Node {
         }
     }
 
-    fn partial(&self) -> &Vec<u8> {
+    fn partial(&self) -> &[u8] {
         match self {
             Node::Node4(node) => node.partial(),
             _ => unimplemented!(),
         }
     }
 
-    fn match_key(&self, key: &Vec<u8>, max_match_len: usize, depth: usize) -> Option<usize> {
+    fn match_key(&self, key: &[u8], max_match_len: usize, depth: usize) -> Option<usize> {
         match self {
             Node::Node4(node) => node.match_key(key, max_match_len, depth),
             _ => unimplemented!(),
@@ -442,7 +445,7 @@ impl Node4 {
         }
     }
 
-    fn partial(&self) -> &Vec<u8> {
+    fn partial(&self) -> &[u8] {
         &self.meta.partial
     }
 
@@ -450,15 +453,19 @@ impl Node4 {
         self.meta.prefix_len
     }
 
-    fn match_key(&self, key: &Vec<u8>, max_match_len: usize, depth: usize) -> Option<usize> {
-        let mut idx = 0;
-        while idx < max_match_len {
-            if self.meta.partial[idx] != key[depth + idx] {
-                return Some(idx);
-            }
-            idx += 1;
-        }
-        Some(idx)
+    fn match_key(&self, key: &[u8], max_match_len: usize, depth: usize) -> Option<usize> {
+        let one = &self.meta.partial[0..max_match_len];
+        let two = &key[depth..];
+        ne_idx(one, two)
+
+//        let mut idx = 0;
+//        while idx < max_match_len {
+//            if self.meta.partial[idx] != key[depth + idx] {
+//                return Some(idx);
+//            }
+//            idx += 1;
+//        }
+//        Some(idx)
     }
 
     fn add_child(&mut self, node: Box<Node>, key_char: Option<u8>) {
