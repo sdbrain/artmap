@@ -1,15 +1,17 @@
 use crate::{Art, Leaf, Node, Node4, NodeMeta, MAX_PREFIX};
 use hashbrown::HashMap;
-use std::borrow::Borrow;
+use std::borrow::{Borrow, BorrowMut};
 use std::cmp::min;
 use std::mem::replace;
 use std::ops::DerefMut;
 use xi_rope::compare::ne_idx;
 
+const LEAF_INDEX: usize = 256;
+
 impl Art {
     pub fn new() -> Self {
         Art {
-            root: Box::new(Node::None),
+            root: Node::None,
             size: 0,
         }
     }
@@ -84,14 +86,14 @@ impl Art {
     }
 
     pub fn insert(&mut self, key: Vec<u8>, value: Vec<u8>) {
-        let mut current = self.root.deref_mut();
+        let mut current = self.root.borrow_mut();
         let mut depth = 0;
         let mut count = 0;
 
         loop {
             match current {
                 Node::None => {
-                    let leaf = Box::new(Node::Leaf(Leaf::new(key, value)));
+                    let leaf = Node::Leaf(Leaf::new(key, value));
                     self.root = leaf;
                     count += 1;
                     break;
@@ -117,11 +119,11 @@ impl Art {
 
                     let leaf = leaf.clone();
                     let key_char = leaf.key_char(depth);
-                    node4.add_child(Box::new(Node::Leaf(leaf)), key_char);
+                    node4.add_child(Node::Leaf(leaf), key_char);
 
                     let leaf2 = Leaf::new(key, value);
                     let key_char = leaf2.key_char(depth);
-                    node4.add_child(Box::new(Node::Leaf(leaf2)), key_char);
+                    node4.add_child(Node::Leaf(leaf2), key_char);
 
                     *current = Node::Node4(node4);
                     count += 1;
@@ -140,11 +142,11 @@ impl Art {
 
                         if !current.child_exists(&key, depth) {
                             let key_char = match key.get(depth) {
-                                Some(ch) => Some(*ch),
-                                None => None,
+                                Some(ch) => *ch as usize,
+                                None => LEAF_INDEX,
                             };
 
-                            let leaf = Box::new(Node::Leaf(Leaf::new(key, value)));
+                            let leaf = Node::Leaf(Leaf::new(key, value));
                             current.add_child(leaf, key_char);
                             count += 1;
                             break;
@@ -163,9 +165,9 @@ impl Art {
                         .collect();
 
                     // fix up current node
-                    let new_prefix_len = current.prefix_len() - (current_prefix_len + 1);
-                    current.set_prefix_len(new_prefix_len);
-                    if current_prefix_len <= MAX_PREFIX {
+                    if current.prefix_len() <= MAX_PREFIX {
+                        let new_prefix_len = current.prefix_len() - (current_prefix_len + 1);
+                        current.set_prefix_len(new_prefix_len);
                         let new_partial = current
                             .partial()
                             .iter()
@@ -174,13 +176,15 @@ impl Art {
                             .take(min(current.prefix_len(), MAX_PREFIX))
                             .collect();
                         // extract the key char before munging the partial
-                        let key_char = current.partial()[current_prefix_len];
+                        let key_char = current.partial()[current_prefix_len] as usize;
                         current.set_partial(new_partial);
 
                         // place old current as a child under
                         let old_node = replace(&mut *current, Node::Node4(node4));
-                        current.add_child(Box::new(old_node), Some(key_char));
+                        current.add_child(old_node, key_char);
                     } else {
+                        let new_prefix_len = current.prefix_len() - (current_prefix_len + 1);
+                        current.set_prefix_len(new_prefix_len);
                         let leaf = current.minimum();
                         let (key_char, new_partial) = if let Node::Leaf(leaf) = leaf {
                             let new_partial: Vec<u8> = leaf
@@ -198,11 +202,11 @@ impl Art {
                         current.set_partial(new_partial);
                         // place old current as a child under
                         let old_node = replace(&mut *current, Node::Node4(node4));
-                        current.add_child(Box::new(old_node), Some(key_char));
+                        current.add_child(old_node, key_char as usize);
                     }
 
                     let key_char = key[depth + current_prefix_len];
-                    current.add_child(Box::new(Node::Leaf(Leaf::new(key, value))), Some(key_char));
+                    current.add_child(Node::Leaf(Leaf::new(key, value)), key_char as usize);
                     count += 1;
                     break;
                 }
@@ -276,23 +280,28 @@ impl Node {
                 Node::Leaf(_) => {
                     return tmp_node;
                 }
-                Node::Node4(node4) => match node4.children.get(&None) {
-                    Some(node) => {
-                        tmp_node = node.borrow();
-                        continue;
+
+                // if we have a node at LEAF_INDEX, assign tmp_node to that and continue
+                // else find the first non empty child and assign it to tmp_node and continue
+                Node::Node4(node4) => {
+                    match node4.children.get(LEAF_INDEX).unwrap() {
+                        Node::None => {
+                            for child in node4.children.iter() {
+                                if let Node::None = child {
+                                    // no op
+                                } else {
+                                    tmp_node = child;
+                                    break;
+                                }
+                            }
+                        }
+                        node => {
+                            tmp_node = node;
+                        }
                     }
-                    None => {
-                        let mut v = node4
-                            .children
-                            .keys()
-                            .copied()
-                            .collect::<Vec<Option<u8>>>();
-                        v.sort_unstable();
-                        tmp_node = node4.children.get(v.first().unwrap()).unwrap();
-                    }
-                },
+                }
                 Node::None => {
-                    panic!("should not be here");
+                    panic!("Should not be here");
                 }
             }
         }
@@ -319,7 +328,7 @@ impl Node {
         }
     }
 
-    fn add_child(&mut self, node: Box<Node>, key_char: Option<u8>) {
+    fn add_child(&mut self, node: Node, key_char: usize) {
         match self {
             Node::Node4(node4) => {
                 node4.add_child(node, key_char);
@@ -334,9 +343,17 @@ impl Node {
             Node::Node4(node4) => {
                 // if key exists
                 if let Some(key_char) = key.get(depth) {
-                    node4.children.contains_key(&Some(*key_char))
+                    let node = node4.children.get(*key_char as usize).unwrap();
+                    match node {
+                        Node::None => false,
+                        _ => true
+                    }
                 } else if key.len() == depth {
-                    node4.children.contains_key(&None)
+                    let node = node4.children.get(LEAF_INDEX).unwrap();
+                    match node {
+                        Node::None => false,
+                        _ => true
+                    }
                 } else {
                     false
                 }
@@ -351,13 +368,13 @@ impl Node {
             Node::Node4(node4) => {
                 // if key exists
                 if let Some(ch) = key.get(depth) {
-                    if let Some(child_node) = node4.children.get(&Some(*ch)) {
+                    if let Some(child_node) = node4.children.get(*ch as usize) {
                         Some(child_node)
                     } else {
                         None
                     }
                 } else if depth == key.len() {
-                    if let Some(child_node) = node4.children.get(&None) {
+                    if let Some(child_node) = node4.children.get(LEAF_INDEX) {
                         Some(child_node)
                     } else {
                         None
@@ -376,14 +393,14 @@ impl Node {
             Node::Node4(node4) => {
                 // if key exists
                 if let Some(ch) = key.get(depth) {
-                    if let Some(child_node) = node4.children.get_mut(&Some(*ch)) {
-                        Some(child_node.deref_mut())
+                    if let Some(child_node) = node4.children.get_mut(*ch as usize) {
+                        Some(child_node)
                     } else {
                         None
                     }
                 } else if key.len() == depth {
-                    if let Some(child_node) = node4.children.get_mut(&None) {
-                        Some(child_node.deref_mut())
+                    if let Some(child_node) = node4.children.get_mut(LEAF_INDEX) {
+                        Some(child_node)
                     } else {
                         None
                     }
@@ -425,23 +442,44 @@ impl Leaf {
         }
     }
 
-    fn key_char(&self, depth: usize) -> Option<u8> {
+    fn key_char(&self, depth: usize) -> usize {
         if self.key.len() - 1 < depth {
-            None
+            LEAF_INDEX
         } else {
-            Some(self.key[depth])
+            self.key[depth] as usize
         }
     }
 }
 
 impl Node4 {
+    fn len(&self) -> usize {
+        let mut count: usize = 0;
+        for (c, node) in self.children.iter().enumerate() {
+            match node {
+                Node::None => {}
+                _ => {
+                    count += 1;
+                }
+            }
+        }
+        count
+    }
+
+    fn children(&self) -> Vec<(usize, &Node)> {
+        self.children.iter().enumerate().filter(|n| {
+            match *n.1 {
+                Node::None => false,
+                _ => true
+            }
+        }).map(|n| (n.0, n.1)).collect()
+    }
     fn new() -> Self {
         Node4 {
             meta: NodeMeta {
                 prefix_len: 0,
                 partial: Vec::with_capacity(MAX_PREFIX),
             },
-            children: HashMap::new(),
+            children: vec![Node::None; 257],
         }
     }
 
@@ -454,22 +492,23 @@ impl Node4 {
     }
 
     fn match_key(&self, key: &[u8], max_match_len: usize, depth: usize) -> Option<usize> {
-        let one = &self.meta.partial[0..max_match_len];
-        let two = &key[depth..];
-        ne_idx(one, two)
+        // TODO fix this once compilation errors are fixed
+//        let one = &self.meta.partial[0..max_match_len];
+//        let two = &key[depth..];
+//        ne_idx(one, two)
 
-//        let mut idx = 0;
-//        while idx < max_match_len {
-//            if self.meta.partial[idx] != key[depth + idx] {
-//                return Some(idx);
-//            }
-//            idx += 1;
-//        }
-//        Some(idx)
+        let mut idx = 0;
+        while idx < max_match_len {
+            if self.meta.partial[idx] != key[depth + idx] {
+                return Some(idx);
+            }
+            idx += 1;
+        }
+        Some(idx)
     }
 
-    fn add_child(&mut self, node: Box<Node>, key_char: Option<u8>) {
-        self.children.insert(key_char, node);
+    fn add_child(&mut self, node: Node, key_char: usize) {
+        self.children[key_char] = node;
     }
 }
 
@@ -489,10 +528,17 @@ mod tests {
         });
     }
 
+    fn _verify_children(node: &Node4, elems_to_match: Vec<usize>) {
+        let keys: Vec<usize> = node.children().iter().map(|i| i.0).collect();
+        assert_eq!(keys, elems_to_match);
+    }
+
     fn _insert_with_key_fn(art: &mut Art, items: &Vec<&str>, key_fn: fn(u8) -> u8) {
         items.iter().for_each(|item| {
             let x: Vec<u8> = item.as_bytes().iter().map(|x| key_fn(*x)).collect();
             art.insert(Vec::from(item.as_bytes()), x);
+            print_art(&art);
+            println!("{}", "=".repeat(10));
         });
     }
 
@@ -505,7 +551,7 @@ mod tests {
         let key = items.first().unwrap().clone();
         let value = items.first().unwrap().clone();
         assert_eq!(
-            *art.root,
+            art.root,
             Node::Leaf(Leaf::new(
                 key.as_bytes().to_vec(),
                 value.as_bytes().to_vec(),
@@ -524,13 +570,23 @@ mod tests {
         let new_value = "B".as_bytes().to_vec();
         art.insert(key.clone(), new_value.clone());
 
-        assert_eq!(*art.root, Node::Leaf(Leaf::new(key, new_value)));
+        assert_eq!(art.root, Node::Leaf(Leaf::new(key, new_value)));
     }
 
     #[test]
     fn test_insert_second_leaf() {
-        let mut art = Art::new();
         // TODO add test cases for these cases
+        let tfn = |items: &Vec<&str>| {
+            let mut art = Art::new();
+            _insert(&mut art, &items);
+
+            for item in items.iter() {
+                let res = art.search(&item.as_bytes().to_vec());
+                if res.is_some() {
+                    let st = std::str::from_utf8(res.unwrap()).unwrap();
+                }
+            }
+        };
         let items = [
             "Congo",
             "Congregationalist",
@@ -538,17 +594,24 @@ mod tests {
             "Congregationalists",
         ]
             .to_vec();
-        //        let items = ["Ac", "Acropolis", "Acrux"].to_vec();
-        //        let items = ["A", "AMD", "AMDs"].to_vec();
+        tfn(&items);
+        let items = ["Ac", "Acropolis", "Acrux"].to_vec();
+        tfn(&items);
+        let items = ["A", "AMD", "AMDs"].to_vec();
+        tfn(&items);
+        let items = [
+            "daddy",
+            "dagger",
+            "daguerreotype",
+            "daguerreotypes",
+            "daguerreotyped",
+            "daguerreotype\'s",
+        ].to_vec();
+        let mut art = Art::new();
         _insert(&mut art, &items);
+        _insert(&mut art, &vec!["daguerreotyping"]);
+        tfn(&items);
 
-        for item in items.iter() {
-            let res = art.search(&item.as_bytes().to_vec());
-            if res.is_some() {
-                let st = std::str::from_utf8(res.unwrap()).unwrap();
-                println!("&st = {:#?}", &st);
-            }
-        }
 
         //        assert_eq!(art.len(), 2);
         //
@@ -594,20 +657,22 @@ mod tests {
                 node.meta.partial,
                 "A".repeat(MAX_PREFIX).as_bytes().to_vec()
             );
-            assert_eq!(node.children.len(), 2);
+            assert_eq!(node.len(), 2);
 
             // all nodes should be of type leaf
-            for (_, child) in node.children.iter() {
-                match child.borrow() {
+            for child in node.children.iter() {
+                match child {
                     Node::Leaf(_) => {}
+                    Node::None => continue,
                     _ => panic!(" Node should be of type leaf"),
                 }
             }
 
-            let A = node.children.get(&None);
+            let A = node.children.get(LEAF_INDEX);
+            let ch = *"A".repeat(20).as_bytes().first().unwrap();
             let M = node
                 .children
-                .get(&Some(*"A".repeat(20).as_bytes().first().unwrap()));
+                .get(ch as usize);
 
             assert!(A.is_some());
             assert!(M.is_some());
@@ -620,38 +685,37 @@ mod tests {
     #[test]
     fn test_insert_node4_same_prefix_as_existing() {
         let mut art = Art::new();
-        let items = vec!["AMD", "AMDs", "AMBs"];
+        let items = vec!["BMD", "BMDs", "BMBs"];
         _insert(&mut art, &items);
         let x: Vec<String> = items.iter().skip(4).map(|t| String::from(*t)).collect();
 
         assert_eq!(art.len(), 3);
         if let Node::Node4(node) = &art.root.borrow() {
-            assert_eq!(node.children.len(), 2);
+            assert_eq!(node.len(), 2);
             assert_eq!(node.meta.prefix_len, 2);
             assert_eq!(node.meta.partial.len(), 2);
             assert_eq!(
                 node.meta.partial,
-                ['A', 'M'].iter().map(|c| *c as u8).collect::<Vec<u8>>()
+                ['B', 'M'].iter().map(|c| *c as u8).collect::<Vec<u8>>()
             );
-            let keys: Vec<Option<u8>> = node.children.keys().map(|i| *i).collect();
-            assert_eq!(keys, vec![Some('B' as u8), Some('D' as u8)]);
+            _verify_children(node, vec!['B' as u8 as usize, 'D' as u8 as usize]);
 
-            let b_node = node.children.get(&Some('B' as u8));
+            let b_node = node.children.get('B' as u8 as usize);
             assert!(b_node.is_some());
             let b_node = b_node.unwrap().borrow();
             if let Node::Leaf(leaf) = b_node {
-                assert_eq!(leaf.key, Vec::from("AMBs".as_bytes()));
+                assert_eq!(leaf.key, Vec::from("BMBs".as_bytes()));
             } else {
                 panic!("b_node should be a leaf");
             }
 
-            let d_node = node.children.get(&Some('D' as u8));
+            let d_node = node.children.get('D' as u8 as usize);
             assert!(d_node.is_some());
             let m_node = d_node.unwrap().borrow();
             if let Node::Node4(node4) = m_node {
-                assert_eq!(node4.children.len(), 2);
+                assert_eq!(node4.len(), 2);
                 assert_eq!(node4.prefix_len(), 0);
-                assert!(node4.partial().is_empty())
+                assert!(node4.partial().is_empty());
             } else {
                 panic!("d_node should be node4");
             }
@@ -664,30 +728,29 @@ mod tests {
     #[test]
     fn test_insert_node4_same_prefix_as_existing_next_level() {
         let mut art = Art::new();
-        let items = vec!["A", "AMD", "AMDs"];
+        let items = vec!["B", "BMD", "BMDs"];
         _insert(&mut art, &items);
         // size of the trie should be 3
         assert_eq!(art.len(), 3);
 
         // check the new nodes position and prefix relocation
         if let Node::Node4(node) = &art.root.borrow() {
-            assert_eq!(node.children.len(), 2);
+            assert_eq!(node.len(), 2);
             assert_eq!(node.meta.prefix_len, 1);
             assert_eq!(node.meta.partial.len(), 1);
             assert_eq!(
                 node.meta.partial,
-                ['A'].iter().map(|c| *c as u8).collect::<Vec<u8>>()
+                ['B'].iter().map(|c| *c as u8).collect::<Vec<u8>>()
             );
 
-            let keys: Vec<Option<u8>> = node.children.keys().map(|i| *i).collect();
-            assert_eq!(keys, vec![None, Some('M' as u8)]);
+            _verify_children(&node, vec!['M' as u8 as usize, LEAF_INDEX]);
 
-            let m_node = node.children.get(&Some('M' as u8));
+            let m_node = node.children.get('M' as u8 as usize);
             assert!(m_node.is_some());
             let m_node = m_node.unwrap().borrow();
 
             if let Node::Node4(node) = m_node {
-                assert_eq!(node.children.len(), 2);
+                assert_eq!(node.len(), 2);
                 assert_eq!(node.meta.prefix_len, 1);
                 assert_eq!(node.meta.partial.len(), 1);
                 assert_eq!(
@@ -695,8 +758,7 @@ mod tests {
                     ['D'].iter().map(|c| *c as u8).collect::<Vec<u8>>()
                 );
 
-                let keys: Vec<Option<u8>> = node.children.keys().map(|i| *i).collect();
-                assert_eq!(keys, vec![None, Some('s' as u8)]);
+                _verify_children(&node, vec!['s' as u8 as usize, LEAF_INDEX]);
             } else {
                 panic!("m_node should be a node4");
             }
@@ -750,12 +812,11 @@ mod tests {
         assert_eq!(art.len(), 3);
 
         if let Node::Node4(node) = &art.root.borrow() {
-            assert_eq!(node.children.len(), 3);
+            assert_eq!(node.len(), 3);
             assert_eq!(node.meta.partial.len(), 1);
             assert_eq!(node.meta.prefix_len, 1);
 
-            let keys: Vec<Option<u8>> = node.children.keys().map(|i| *i).collect();
-            assert_eq!(keys, vec![None, Some('B' as u8), Some('M' as u8)]);
+            _verify_children(&node, vec!['B' as u8 as usize, 'M' as u8 as usize, LEAF_INDEX]);
         } else {
             panic!("Should be a node 4");
         }
@@ -772,22 +833,21 @@ mod tests {
         assert_eq!(art.len(), 3);
 
         if let Node::Node4(node) = &art.root.borrow() {
-            assert_eq!(node.children.len(), 3);
+            assert_eq!(node.len(), 3);
             assert_eq!(node.meta.partial.len(), 1);
             assert_eq!(node.meta.prefix_len, 1);
 
-            let keys: Vec<Option<u8>> = node.children.keys().map(|i| *i).collect();
-            assert_eq!(keys, vec![None, Some('B' as u8), Some('M' as u8)]);
+            _verify_children(&node, vec!['B' as u8 as usize, 'M' as u8 as usize, LEAF_INDEX]);
 
-            for key in keys {
-                let value = node.children.get(&key);
-                if let Node::Leaf(leaf) = value.unwrap().borrow() {
-                    let x: Vec<u8> = leaf.key.iter().map(|x| c_fn(*x)).collect();
-                    assert_eq!(leaf.value, x);
-                } else {
-                    panic!("Should be a leaf ");
-                }
-            }
+//            for key in keys {
+//                let value = node.children.get(key);
+//                if let Node::Leaf(leaf) = value.unwrap().borrow() {
+//                    let x: Vec<u8> = leaf.key.iter().map(|x| c_fn(*x)).collect();
+//                    assert_eq!(leaf.value, x);
+//                } else {
+//                    panic!("Should be a leaf ");
+//                }
+//            }
         } else {
             panic!("Should be a node 4");
         }
@@ -816,6 +876,7 @@ mod tests {
             });
             buffer
         };
+        println!("Length of the tree is {} ", art.len());
 
         // dump tree
         let mut stack = Vec::new();
@@ -845,18 +906,22 @@ mod tests {
                 }
                 Node::Node4(node4) => {
                     // print node metadata
+                    let mut keys = Vec::new();
+                    for (c, node) in node4.children.iter().enumerate() {
+                        match node {
+                            Node::None => {}
+                            _ => {
+                                keys.push(c as u8 as char);
+                            }
+                        }
+                    }
                     println!(
                         "{tag:>indent$} char={char} Node4({clen}) {keys:?} - ({plen}) [{partial:?}]",
                         indent = indent,
                         tag = "",
                         char = current_char as u8 as char,
-                        clen = node4.children.len(),
-                        keys = &node4.children.keys().map(|k| {
-                            match k {
-                                Some(v) => *v,
-                                None => 0
-                            }
-                        }).map(|k| k as char).collect::<Vec<char>>(),
+                        clen = keys.len(),
+                        keys = keys,
                         plen = node4.meta.prefix_len,
                         partial = &node4.meta.partial.iter().map(|c| *c as char).collect::<Vec<char>>()
                     );
@@ -877,13 +942,16 @@ mod tests {
                     stack.push((x, &Node::None));
 
                     //queue up the nodes for visiting
-                    for (character, child_node) in node4.children.iter() {
-                        stack.push((character.unwrap_or(0) as i8, child_node.borrow()));
+                    for (character, child_node) in node4.children().iter() {
+                        if let Node::None = child_node {
+                            continue;
+                        } else {
+                            stack.push((*character as i8, child_node));
+                        }
                     }
                 }
                 Node::None => {
-                    dbg!("should not be here");
-                    break;
+                    continue;
                 }
             }
         }
@@ -939,6 +1007,11 @@ mod tests {
             if x.is_err() || buffer.is_empty() {
                 break;
             }
+            println!("&buffer = {:?}", &buffer);
+            if buffer.trim() == "daguerreotyping" {
+                print_art(&art);
+                println!("I am here");
+            }
             art.insert(
                 buffer.trim().clone().as_bytes().to_vec(),
                 buffer.trim().clone().as_bytes().to_vec(),
@@ -964,5 +1037,13 @@ mod tests {
 
         let res = Art::equals(a.as_bytes(), d.as_bytes());
         assert_eq!(false, res);
+    }
+
+    #[test]
+    fn test_vec_capabilities() {
+        let mut items = Vec::new();
+        items.push(Box::new(Node::None));
+
+        let x = items.get(0).unwrap();
     }
 }

@@ -1,10 +1,8 @@
-use hashbrown::HashMap;
-
-const MAX_PREFIX: usize = 10;
+const MAX_PREFIX: usize = 8;
 
 #[derive(Debug)]
 pub struct Art {
-    root: Box<Node>,
+    root: Node,
     size: usize,
 }
 
@@ -37,7 +35,7 @@ struct Leaf {
 #[derive(Debug, Clone, PartialEq)]
 struct Node4 {
     meta: NodeMeta,
-    children: HashMap<Option<u8>, Box<Node>>,
+    children: Vec<Node>,
 }
 
 //#[derive(Debug, Clone)]
