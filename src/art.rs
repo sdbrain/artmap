@@ -164,10 +164,12 @@ impl Art {
                         .copied()
                         .collect();
 
+                    let old_prefix_len = current.prefix_len();
                     // fix up current node
-                    if current.prefix_len() <= MAX_PREFIX {
-                        let new_prefix_len = current.prefix_len() - (current_prefix_len + 1);
-                        current.set_prefix_len(new_prefix_len);
+                    let new_prefix_len = current.prefix_len() - (current_prefix_len + 1);
+                    current.set_prefix_len(new_prefix_len);
+
+                    if old_prefix_len <= MAX_PREFIX {
                         let new_partial = current
                             .partial()
                             .iter()
@@ -183,8 +185,6 @@ impl Art {
                         let old_node = replace(&mut *current, Node::Node4(node4));
                         current.add_child(old_node, key_char);
                     } else {
-                        let new_prefix_len = current.prefix_len() - (current_prefix_len + 1);
-                        current.set_prefix_len(new_prefix_len);
                         let leaf = current.minimum();
                         let (key_char, new_partial) = if let Node::Leaf(leaf) = leaf {
                             let new_partial: Vec<u8> = leaf

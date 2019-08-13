@@ -155,9 +155,9 @@ fn search_hash_map_b(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-//    insert_radix_trie_b,
-//    insert_simple_trie_b,
-//    insert_hash_map_b,
+    insert_simple_trie_b,
+    insert_radix_trie_b,
+    insert_hash_map_b,
     search_simple_trie_b,
     search_radix_trie_b,
     search_hash_map_b,
