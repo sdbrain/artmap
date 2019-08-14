@@ -8,10 +8,10 @@ use criterion::{black_box, BatchSize, Benchmark};
 use fnv::FnvHashMap;
 use hashbrown::HashMap;
 use radix_trie::Trie;
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::rc::Rc;
-use std::collections::BTreeMap;
 
 // "/usr/share/dict/words"
 static PATH: &str = "/tmp/words.txt";

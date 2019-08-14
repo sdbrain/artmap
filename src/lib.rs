@@ -11,9 +11,9 @@ enum Node {
     None,
     Leaf(Leaf),
     Node4(Node4),
-    //    Node16(Node16),
+    Node16(Node16),
     //    Node48(Node48),
-    //    Node256(Node256),
+    Node256(Node256),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,20 +35,29 @@ struct Leaf {
 #[derive(Debug, Clone, PartialEq)]
 struct Node4 {
     meta: NodeMeta,
+    keys: Vec<u8>,
+    children: Vec<Node>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct Node16 {
+    meta: NodeMeta,
+    keys: Vec<u8>,
     children: Vec<Node>,
 }
 
 //#[derive(Debug, Clone)]
-//struct Node16 {
-//    meta: NodeMeta,
-//    keys: Vec<u8>,
-//    children: Vec<Box<Node>>,
-//}
-//
-//#[derive(Debug, Clone)]
 //struct Node48 {}
-//
-//#[derive(Debug, Clone)]
-//struct Node256 {}
+
+#[derive(Debug, Clone, PartialEq)]
+struct Node256 {
+    meta: NodeMeta,
+    children: Vec<Node>,
+}
 
 mod art;
+mod node;
+mod node4;
+mod node16;
+mod node256;
+mod leaf;

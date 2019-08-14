@@ -6,7 +6,6 @@ use std::mem::replace;
 use std::ops::DerefMut;
 use xi_rope::compare::ne_idx;
 
-const LEAF_INDEX: usize = 256;
 
 impl Art {
     pub fn new() -> Self {
@@ -143,7 +142,7 @@ impl Art {
                         if !current.child_exists(&key, depth) {
                             let key_char = match key.get(depth) {
                                 Some(ch) => *ch as usize,
-                                None => LEAF_INDEX,
+                                None => current.max_leaf_index(),
                             };
 
                             let leaf = Node::Leaf(Leaf::new(key, value));
@@ -244,273 +243,6 @@ impl Art {
     }
 }
 
-impl Node {
-    fn prefix_match(&self, key: &[u8], depth: usize) -> usize {
-        // match from depth..max_match_len
-        let max_match_len = min(min(MAX_PREFIX, self.partial().len()), key.len() - depth);
-        self.match_key(key, max_match_len, depth).unwrap_or(0)
-    }
-
-    fn prefix_match_deep(&self, key: &[u8], depth: usize) -> usize {
-        let mut mismatch_idx = self.prefix_match(key, depth);
-        if mismatch_idx < MAX_PREFIX {
-            mismatch_idx
-        } else {
-            // find leaf following the minimum node (None key)
-            let leaf = self.minimum();
-            if let Node::Leaf(leaf) = leaf {
-                let limit = min(leaf.key.len(), key.len()) - depth;
-                while mismatch_idx < limit {
-                    if leaf.key[mismatch_idx + depth] != key[mismatch_idx + depth] {
-                        break;
-                    }
-                    mismatch_idx += 1;
-                }
-                mismatch_idx
-            } else {
-                0
-            }
-        }
-    }
-
-    fn minimum(&self) -> &Node {
-        let mut tmp_node = self;
-        loop {
-            match tmp_node {
-                Node::Leaf(_) => {
-                    return tmp_node;
-                }
-
-                // if we have a node at LEAF_INDEX, assign tmp_node to that and continue
-                // else find the first non empty child and assign it to tmp_node and continue
-                Node::Node4(node4) => {
-                    match node4.children.get(LEAF_INDEX).unwrap() {
-                        Node::None => {
-                            for child in node4.children.iter() {
-                                if let Node::None = child {
-                                    // no op
-                                } else {
-                                    tmp_node = child;
-                                    break;
-                                }
-                            }
-                        }
-                        node => {
-                            tmp_node = node;
-                        }
-                    }
-                }
-                Node::None => {
-                    panic!("Should not be here");
-                }
-            }
-        }
-    }
-    fn set_prefix_len(&mut self, new_prefix_len: usize) {
-        match self {
-            Node::Node4(node4) => {
-                node4.meta.prefix_len = new_prefix_len;
-            }
-            _ => {
-                panic!("Prefix len is not applicable for node of this type");
-            }
-        }
-    }
-
-    fn set_partial(&mut self, new_partial: Vec<u8>) {
-        match self {
-            Node::Node4(node4) => {
-                node4.meta.partial = new_partial;
-            }
-            _ => {
-                panic!("Prefix len is not applicable for node of this type");
-            }
-        }
-    }
-
-    fn add_child(&mut self, node: Node, key_char: usize) {
-        match self {
-            Node::Node4(node4) => {
-                node4.add_child(node, key_char);
-            }
-            _ => {}
-        }
-    }
-
-    fn child_exists(&self, key: &[u8], depth: usize) -> bool {
-        // find the child that corresponds to key[depth]
-        match self {
-            Node::Node4(node4) => {
-                // if key exists
-                if let Some(key_char) = key.get(depth) {
-                    let node = node4.children.get(*key_char as usize).unwrap();
-                    match node {
-                        Node::None => false,
-                        _ => true
-                    }
-                } else if key.len() == depth {
-                    let node = node4.children.get(LEAF_INDEX).unwrap();
-                    match node {
-                        Node::None => false,
-                        _ => true
-                    }
-                } else {
-                    false
-                }
-            }
-            _ => false,
-        }
-    }
-
-    fn find_child(&self, key: &[u8], depth: usize) -> Option<&Node> {
-        // find the child that corresponds to key[depth]
-        match self {
-            Node::Node4(node4) => {
-                // if key exists
-                if let Some(ch) = key.get(depth) {
-                    if let Some(child_node) = node4.children.get(*ch as usize) {
-                        Some(child_node)
-                    } else {
-                        None
-                    }
-                } else if depth == key.len() {
-                    if let Some(child_node) = node4.children.get(LEAF_INDEX) {
-                        Some(child_node)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }
-    }
-
-    fn find_child_mut(&mut self, key: &[u8], depth: usize) -> Option<&mut Node> {
-        // find the child that corresponds to key[depth]
-        match self {
-            Node::Node4(node4) => {
-                // if key exists
-                if let Some(ch) = key.get(depth) {
-                    if let Some(child_node) = node4.children.get_mut(*ch as usize) {
-                        Some(child_node)
-                    } else {
-                        None
-                    }
-                } else if key.len() == depth {
-                    if let Some(child_node) = node4.children.get_mut(LEAF_INDEX) {
-                        Some(child_node)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }
-    }
-
-    fn prefix_len(&self) -> usize {
-        match self {
-            Node::Node4(node) => node.prefix_len(),
-            _ => 0,
-        }
-    }
-
-    fn partial(&self) -> &[u8] {
-        match self {
-            Node::Node4(node) => node.partial(),
-            _ => unimplemented!(),
-        }
-    }
-
-    fn match_key(&self, key: &[u8], max_match_len: usize, depth: usize) -> Option<usize> {
-        match self {
-            Node::Node4(node) => node.match_key(key, max_match_len, depth),
-            _ => unimplemented!(),
-        }
-    }
-}
-
-impl Leaf {
-    fn new(new_key: Vec<u8>, new_value: Vec<u8>) -> Self {
-        Leaf {
-            key: new_key,
-            value: new_value,
-        }
-    }
-
-    fn key_char(&self, depth: usize) -> usize {
-        if self.key.len() - 1 < depth {
-            LEAF_INDEX
-        } else {
-            self.key[depth] as usize
-        }
-    }
-}
-
-impl Node4 {
-    fn len(&self) -> usize {
-        let mut count: usize = 0;
-        for (c, node) in self.children.iter().enumerate() {
-            match node {
-                Node::None => {}
-                _ => {
-                    count += 1;
-                }
-            }
-        }
-        count
-    }
-
-    fn children(&self) -> Vec<(usize, &Node)> {
-        self.children.iter().enumerate().filter(|n| {
-            match *n.1 {
-                Node::None => false,
-                _ => true
-            }
-        }).map(|n| (n.0, n.1)).collect()
-    }
-    fn new() -> Self {
-        Node4 {
-            meta: NodeMeta {
-                prefix_len: 0,
-                partial: Vec::with_capacity(MAX_PREFIX),
-            },
-            children: vec![Node::None; 257],
-        }
-    }
-
-    fn partial(&self) -> &[u8] {
-        &self.meta.partial
-    }
-
-    fn prefix_len(&self) -> usize {
-        self.meta.prefix_len
-    }
-
-    fn match_key(&self, key: &[u8], max_match_len: usize, depth: usize) -> Option<usize> {
-        // TODO fix this once compilation errors are fixed
-//        let one = &self.meta.partial[0..max_match_len];
-//        let two = &key[depth..];
-//        ne_idx(one, two)
-
-        let mut idx = 0;
-        while idx < max_match_len {
-            if self.meta.partial[idx] != key[depth + idx] {
-                return Some(idx);
-            }
-            idx += 1;
-        }
-        Some(idx)
-    }
-
-    fn add_child(&mut self, node: Node, key_char: usize) {
-        self.children[key_char] = node;
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -606,12 +338,12 @@ mod tests {
             "daguerreotypes",
             "daguerreotyped",
             "daguerreotype\'s",
-        ].to_vec();
+        ]
+            .to_vec();
         let mut art = Art::new();
         _insert(&mut art, &items);
         _insert(&mut art, &vec!["daguerreotyping"]);
         tfn(&items);
-
 
         //        assert_eq!(art.len(), 2);
         //
@@ -668,11 +400,9 @@ mod tests {
                 }
             }
 
-            let A = node.children.get(LEAF_INDEX);
+            let A = node.children.get(node.max_leaf_index());
             let ch = *"A".repeat(20).as_bytes().first().unwrap();
-            let M = node
-                .children
-                .get(ch as usize);
+            let M = node.children.get(ch as usize);
 
             assert!(A.is_some());
             assert!(M.is_some());
@@ -743,7 +473,7 @@ mod tests {
                 ['B'].iter().map(|c| *c as u8).collect::<Vec<u8>>()
             );
 
-            _verify_children(&node, vec!['M' as u8 as usize, LEAF_INDEX]);
+            _verify_children(&node, vec!['M' as u8 as usize, node.max_leaf_index()]);
 
             let m_node = node.children.get('M' as u8 as usize);
             assert!(m_node.is_some());
@@ -758,7 +488,7 @@ mod tests {
                     ['D'].iter().map(|c| *c as u8).collect::<Vec<u8>>()
                 );
 
-                _verify_children(&node, vec!['s' as u8 as usize, LEAF_INDEX]);
+                _verify_children(&node, vec!['s' as u8 as usize, node.max_leaf_index()]);
             } else {
                 panic!("m_node should be a node4");
             }
@@ -816,7 +546,10 @@ mod tests {
             assert_eq!(node.meta.partial.len(), 1);
             assert_eq!(node.meta.prefix_len, 1);
 
-            _verify_children(&node, vec!['B' as u8 as usize, 'M' as u8 as usize, LEAF_INDEX]);
+            _verify_children(
+                &node,
+                vec!['B' as u8 as usize, 'M' as u8 as usize, node.max_leaf_index()],
+            );
         } else {
             panic!("Should be a node 4");
         }
@@ -837,17 +570,20 @@ mod tests {
             assert_eq!(node.meta.partial.len(), 1);
             assert_eq!(node.meta.prefix_len, 1);
 
-            _verify_children(&node, vec!['B' as u8 as usize, 'M' as u8 as usize, LEAF_INDEX]);
+            _verify_children(
+                &node,
+                vec!['B' as u8 as usize, 'M' as u8 as usize, node.max_leaf_index()],
+            );
 
-//            for key in keys {
-//                let value = node.children.get(key);
-//                if let Node::Leaf(leaf) = value.unwrap().borrow() {
-//                    let x: Vec<u8> = leaf.key.iter().map(|x| c_fn(*x)).collect();
-//                    assert_eq!(leaf.value, x);
-//                } else {
-//                    panic!("Should be a leaf ");
-//                }
-//            }
+            //            for key in keys {
+            //                let value = node.children.get(key);
+            //                if let Node::Leaf(leaf) = value.unwrap().borrow() {
+            //                    let x: Vec<u8> = leaf.key.iter().map(|x| c_fn(*x)).collect();
+            //                    assert_eq!(leaf.value, x);
+            //                } else {
+            //                    panic!("Should be a leaf ");
+            //                }
+            //            }
         } else {
             panic!("Should be a node 4");
         }
@@ -904,54 +640,55 @@ mod tests {
                         val = to_string(&leaf.value)
                     );
                 }
-                Node::Node4(node4) => {
-                    // print node metadata
-                    let mut keys = Vec::new();
-                    for (c, node) in node4.children.iter().enumerate() {
-                        match node {
-                            Node::None => {}
-                            _ => {
-                                keys.push(c as u8 as char);
-                            }
-                        }
-                    }
-                    println!(
-                        "{tag:>indent$} char={char} Node4({clen}) {keys:?} - ({plen}) [{partial:?}]",
-                        indent = indent,
-                        tag = "",
-                        char = current_char as u8 as char,
-                        clen = keys.len(),
-                        keys = keys,
-                        plen = node4.meta.prefix_len,
-                        partial = &node4.meta.partial.iter().map(|c| *c as char).collect::<Vec<char>>()
-                    );
-
-                    if node4.meta.prefix_len < MAX_PREFIX
-                        && node4.meta.partial.len() != node4.meta.prefix_len
-                    {
-                        eprintln!(
-                            "{tag:>indent$} Error: partial len does not match prefix len",
-                            indent = indent,
-                            tag = ""
-                        );
-                    }
-
-                    // push a marker for dealing with indentation
-                    indent += 5;
-                    let x: i8 = -1;
-                    stack.push((x, &Node::None));
-
-                    //queue up the nodes for visiting
-                    for (character, child_node) in node4.children().iter() {
-                        if let Node::None = child_node {
-                            continue;
-                        } else {
-                            stack.push((*character as i8, child_node));
-                        }
-                    }
-                }
                 Node::None => {
                     continue;
+                }
+                node4 => {
+                    // TODO re-write this
+                    // print node metadata
+//                    let mut keys = Vec::new();
+//                    for (c, node) in node4.children().iter() {
+//                        match node {
+//                            Node::None => {}
+//                            _ => {
+//                                keys.push(*c as u8 as char);
+//                            }
+//                        }
+//                    }
+//                    println!(
+//                        "{tag:>indent$} char={char} Node4({clen}) {keys:?} - ({plen}) [{partial:?}]",
+//                        indent = indent,
+//                        tag = "",
+//                        char = current_char as u8 as char,
+//                        clen = keys.len(),
+//                        keys = keys,
+//                        plen = node4.meta.prefix_len,
+//                        partial = &node4.meta.partial.iter().map(|c| *c as char).collect::<Vec<char>>()
+//                    );
+//
+//                    if node4.meta.prefix_len < MAX_PREFIX
+//                        && node4.meta.partial.len() != node4.meta.prefix_len
+//                    {
+//                        eprintln!(
+//                            "{tag:>indent$} Error: partial len does not match prefix len",
+//                            indent = indent,
+//                            tag = ""
+//                        );
+//                    }
+//
+//                    // push a marker for dealing with indentation
+//                    indent += 5;
+//                    let x: i8 = -1;
+//                    stack.push((x, &Node::None));
+//
+//                    //queue up the nodes for visiting
+//                    for (character, child_node) in node4.children().iter() {
+//                        if let Node::None = child_node {
+//                            continue;
+//                        } else {
+//                            stack.push((*character as i8, child_node));
+//                        }
+//                    }
                 }
             }
         }
