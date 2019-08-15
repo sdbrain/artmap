@@ -35,8 +35,8 @@ struct Leaf {
 #[derive(Debug, Clone, PartialEq)]
 struct Node4 {
     meta: NodeMeta,
-    keys: Vec<u8>,
-    children: Vec<Node>,
+    children: Vec<(u8, Node)>,
+    term_leaf: Option<Box<Node>>
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -56,8 +56,8 @@ struct Node256 {
 }
 
 mod art;
+mod leaf;
 mod node;
-mod node4;
 mod node16;
 mod node256;
-mod leaf;
+mod node4;

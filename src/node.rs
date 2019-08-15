@@ -1,7 +1,16 @@
-use crate::{Node, MAX_PREFIX, NodeMeta};
+use crate::{Node, NodeMeta, MAX_PREFIX};
 use std::cmp::min;
+use std::borrow::{Borrow, BorrowMut};
 
 impl Node {
+    pub(crate) fn key_char(key: &[u8], depth: usize) -> Option<u8> {
+        if key.len() - 1 < depth {
+            None
+        } else {
+            Some(key[depth])
+        }
+    }
+
     fn match_key(&self, key: &[u8], max_match_len: usize, depth: usize) -> Option<usize> {
         // TODO fix this once compilation errors are fixed
         //        let one = &self.meta.partial[0..max_match_len];
@@ -13,7 +22,7 @@ impl Node {
             Node::Node16(node16) => &node16.meta,
             Node::Node256(node256) => &node256.meta,
             // TODO return error
-            _ => panic!("Should not be here")
+            _ => panic!("Should not be here"),
         };
 
         let mut idx = 0;
@@ -63,14 +72,16 @@ impl Node {
                 }
 
                 Node::Node4(node4) => {
-                    // if we have a node at LEAF_INDEX, assign tmp_node to that and continue
+                    // if we have a node at term_leaf, assign tmp_node to that and continue
                     // else use the first element in the children list
-                    match node4.children.get(node4.max_leaf_index()).unwrap() {
-                        Node::None => {
-                            tmp_node = node4.children.first().unwrap();
-                        }
-                        node => {
-                            tmp_node = node;
+                    if node4.term_leaf.is_some() {
+                        tmp_node = node4.term_leaf.as_ref().unwrap();
+                    } else {
+                        match node4.children.first() {
+                            Some(child) => {
+                                tmp_node = child.1.borrow();
+                            },
+                            None => panic!("Should not be here")
                         }
                     }
                 }
@@ -114,15 +125,9 @@ impl Node {
 
     fn get_meta(&self) -> &NodeMeta {
         match self {
-            Node::Node4(node4) => {
-                &node4.meta
-            }
-            Node::Node16(node16) => {
-                &node16.meta
-            }
-            Node::Node256(node256) => {
-                &node256.meta
-            }
+            Node::Node4(node4) => &node4.meta,
+            Node::Node16(node16) => &node16.meta,
+            Node::Node256(node256) => &node256.meta,
             _ => {
                 panic!("Prefix len is not applicable for node of this type");
             }
@@ -131,15 +136,9 @@ impl Node {
 
     fn get_meta_mut(&mut self) -> &mut NodeMeta {
         match self {
-            Node::Node4(node4) => {
-                &mut node4.meta
-            }
-            Node::Node16(node16) => {
-                &mut node16.meta
-            }
-            Node::Node256(node256) => {
-                &mut node256.meta
-            }
+            Node::Node4(node4) => &mut node4.meta,
+            Node::Node16(node16) => &mut node16.meta,
+            Node::Node256(node256) => &mut node256.meta,
             _ => {
                 panic!("Prefix len is not applicable for node of this type");
             }
@@ -154,7 +153,7 @@ impl Node {
         self.get_meta_mut().partial = new_partial;
     }
 
-    pub(crate) fn add_child(&mut self, node: Node, key_char: usize) {
+    pub(crate) fn add_child(&mut self, node: Node, key_char: Option<u8>) {
         match self {
             Node::Node4(node4) => {
                 node4.add_child(node, key_char);
@@ -169,17 +168,9 @@ impl Node {
             Node::Node4(node4) => {
                 // if key exists
                 if let Some(key_char) = key.get(depth) {
-                    let node = node4.children.get(*key_char as usize).unwrap();
-                    match node {
-                        Node::None => false,
-                        _ => true,
-                    }
+                    node4.child_at(*key_char).is_some()
                 } else if key.len() == depth {
-                    let node = node4.children.get(node4.max_leaf_index()).unwrap();
-                    match node {
-                        Node::None => false,
-                        _ => true,
-                    }
+                    node4.term_leaf.is_some()
                 } else {
                     false
                 }
@@ -194,14 +185,10 @@ impl Node {
             Node::Node4(node4) => {
                 // if key exists
                 if let Some(ch) = key.get(depth) {
-                    if let Some(child_node) = node4.children.get(*ch as usize) {
-                        Some(child_node)
-                    } else {
-                        None
-                    }
+                    node4.child_at(*ch)
                 } else if depth == key.len() {
-                    if let Some(child_node) = node4.children.get(node4.max_leaf_index()) {
-                        Some(child_node)
+                    if let Some(child_node) = &node4.term_leaf {
+                        Some(child_node.borrow())
                     } else {
                         None
                     }
@@ -219,15 +206,10 @@ impl Node {
             Node::Node4(node4) => {
                 // if key exists
                 if let Some(ch) = key.get(depth) {
-                    if let Some(child_node) = node4.children.get_mut(*ch as usize) {
-                        Some(child_node)
-                    } else {
-                        None
-                    }
+                    node4.child_at_mut(*ch)
                 } else if key.len() == depth {
-                    let leaf_index = node4.max_leaf_index();
-                    if let Some(child_node) = node4.children.get_mut(leaf_index) {
-                        Some(child_node)
+                    if node4.term_leaf.is_some() {
+                        Some(node4.term_leaf.as_mut().unwrap())
                     } else {
                         None
                     }
@@ -253,7 +235,7 @@ impl Node {
         }
     }
 
-    fn children(&self) -> Vec<(usize, &Node)> {
+    fn children(&self) -> Vec<(Option<u8>, &Node)> {
         match self {
             Node::Node4(node) => node.children(),
             _ => unimplemented!(),
@@ -265,7 +247,7 @@ impl Node {
             Node::Node4(node) => node.max_leaf_index(),
             Node::Node16(node16) => node16.max_leaf_index(),
             Node::Node256(node256) => node256.max_leaf_index(),
-            _ => panic!("Should not be here")
+            _ => panic!("Should not be here"),
         }
     }
 }

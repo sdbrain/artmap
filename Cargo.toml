@@ -7,11 +7,11 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-fnv = "1.0.6"
-hashbrown = "0.5.0"
 xi-rope = "0.3.0"
 
 [dev-dependencies]
+fnv = "1.0.6"
+hashbrown = "0.5.0"
 criterion = "0.2.11"
 radix_trie = "0.1.4"
 
