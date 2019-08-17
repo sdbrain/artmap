@@ -10,7 +10,7 @@ impl Node16 {
                 prefix_len: 0,
                 partial: Vec::with_capacity(MAX_PREFIX),
             },
-            children: Vec::with_capacity(4),
+            children: Vec::with_capacity(16),
             term_leaf: None,
         }
     }
@@ -22,12 +22,12 @@ impl Node16 {
                 replace(&mut self.children, node4.children);
                 replace(&mut self.term_leaf, node4.term_leaf);
             }
-            _ => {}
+            _ => panic!("only copying from node4 is allowed"),
         }
     }
 
     pub(crate) fn should_grow(&self) -> bool {
-        self.keys().len() == 16
+        self.children.len() == 16
     }
 
     // TODO ===================== Refactor and share between Node4 and Node16 =====
@@ -64,10 +64,6 @@ impl Node16 {
 
     pub(crate) fn keys(&self) -> Vec<u8> {
         self.children.iter().map(|i| i.0).collect()
-    }
-
-    pub(crate) fn outgoing_children(&self) -> Vec<&Node> {
-        self.children.iter().map(|i| i.1.borrow()).collect()
     }
 
     pub(crate) fn term_leaf_mut(&mut self) -> Option<&mut Box<Node>> {
@@ -138,21 +134,5 @@ impl Display for Node16 {
                 .collect::<Vec<char>>(),
             leaf = self.term_leaf().is_some()
         )
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use xi_rope::compare::ne_idx;
-
-    #[test]
-    fn test_simd_search() {
-        let mut items = Vec::new();
-        items.push(1);
-        items.push(2);
-        items.push(4);
-
-        let x: u8 = 10;
     }
 }

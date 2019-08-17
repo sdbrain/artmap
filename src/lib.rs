@@ -53,6 +53,7 @@ struct Node16 {
 struct Node256 {
     meta: NodeMeta,
     children: Vec<Node>,
+    term_leaf: Option<Box<Node>>,
 }
 
 mod art;

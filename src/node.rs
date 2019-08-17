@@ -1,4 +1,4 @@
-use crate::{Node, Node16, NodeMeta, MAX_PREFIX};
+use crate::{Node, Node16, Node256, NodeMeta, MAX_PREFIX};
 use std::borrow::{Borrow, BorrowMut};
 use std::cmp::min;
 use std::fmt::{Display, Error, Formatter};
@@ -66,54 +66,20 @@ impl Node {
                 Node::Leaf(_) => {
                     return tmp_node;
                 }
-
-                Node::Node4(node4) => {
-                    // if we have a node at term_leaf, assign tmp_node to that and continue
-                    // else use the first element in the children list
-                    if node4.term_leaf.is_some() {
-                        tmp_node = node4.term_leaf.as_ref().unwrap();
-                    } else {
-                        match node4.children.first() {
-                            Some(child) => {
-                                tmp_node = child.1.borrow();
-                            }
-                            None => panic!("Should not be here"),
-                        }
-                    }
-                }
-                Node::Node16(node16) => {
-                    if node16.term_leaf.is_some() {
-                        tmp_node = node16.term_leaf.as_ref().unwrap();
-                    } else {
-                        match node16.children.first() {
-                            Some(child) => {
-                                tmp_node = child.1.borrow();
-                            }
-                            None => panic!("Should not be here"),
-                        }
-                    }
-                }
-                Node::Node256(node256) => {
-                    // if we have a node at LEAF_INDEX, assign tmp_node to that and continue
-                    // else find the first non empty child and assign it to tmp_node and continue
-                    match node256.children.get(node256.max_leaf_index()).unwrap() {
-                        Node::None => {
-                            for child in node256.children.iter() {
-                                if let Node::None = child {
-                                    // no op
-                                } else {
-                                    tmp_node = child;
-                                    break;
-                                }
-                            }
-                        }
-                        node => {
-                            tmp_node = node;
-                        }
-                    }
-                }
                 Node::None => {
                     panic!("Should not be here");
+                }
+                node => {
+                    // if we have a node at term_leaf, assign tmp_node to that and continue
+                    // else use the first element in the children list
+                    if self.term_leaf().is_some() {
+                        tmp_node = self.term_leaf().as_ref().unwrap();
+                    } else {
+                        match self.children().first() {
+                            Some(child) => tmp_node = child.1.borrow(),
+                            None => panic!("Should not be here"),
+                        }
+                    }
                 }
             }
         }
@@ -149,14 +115,6 @@ impl Node {
         self.get_meta_mut().partial = new_partial;
     }
 
-    pub(crate) fn copy(&mut self, node_to_copy: Node) {
-        match self {
-            Node::Node4(node4) => panic!("should not be here"),
-            Node::Node16(node16) => node16.copy(node_to_copy),
-            _ => unimplemented!(),
-        }
-    }
-
     pub(crate) fn add_child(&mut self, node: Node, key_char: Option<u8>) {
         match self {
             Node::Node4(node4) => {
@@ -173,108 +131,88 @@ impl Node {
             Node::Node16(node16) => {
                 let should_grow = node16.should_grow();
                 if should_grow {
-
+                    let mut node256 = Node::Node256(Node256::new());
+                    let old_node = replace(self, node256);
+                    self.copy(old_node);
+                    self.add_child(node, key_char);
                 } else {
                     node16.add_child(node, key_char);
                 }
             }
+            Node::Node256(node256) => node256.add_child(node, key_char),
             _ => unimplemented!(),
         }
     }
 
     pub(crate) fn child_exists(&self, key: &[u8], depth: usize) -> bool {
-        // find the child that corresponds to key[depth]
-        match self {
-            Node::Node4(node4) => {
-                // if key exists
-                if let Some(key_char) = key.get(depth) {
-                    node4.child_at(*key_char).is_some()
-                } else if key.len() == depth {
-                    node4.term_leaf().is_some()
-                } else {
-                    false
-                }
-            }
-            Node::Node16(node16) => {
-                // if key exists
-                if let Some(key_char) = key.get(depth) {
-                    node16.child_at(*key_char).is_some()
-                } else if key.len() == depth {
-                    node16.term_leaf().is_some()
-                } else {
-                    false
-                }
-            }
-            _ => unimplemented!(),
+        if let Some(key_char) = key.get(depth) {
+            self.child_at(*key_char).is_some()
+        } else if key.len() == depth {
+            self.term_leaf().is_some()
+        } else {
+            false
         }
     }
 
     pub(crate) fn find_child(&self, key: &[u8], depth: usize) -> Option<&Node> {
-        // find the child that corresponds to key[depth]
-        match self {
-            Node::Node4(node4) => {
-                // if key exists
-                if let Some(ch) = key.get(depth) {
-                    node4.child_at(*ch)
-                } else if depth == key.len() {
-                    if let Some(child_node) = &node4.term_leaf() {
-                        Some(child_node)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
+        if let Some(ch) = key.get(depth) {
+            self.child_at(*ch)
+        } else if depth == key.len() {
+            if let Some(child_node) = &self.term_leaf() {
+                Some(child_node)
+            } else {
+                None
             }
-            Node::Node16(node16) => {
-                // if key exists
-                if let Some(ch) = key.get(depth) {
-                    node16.child_at(*ch)
-                } else if depth == key.len() {
-                    if let Some(child_node) = &node16.term_leaf() {
-                        Some(child_node)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            }
-            _ => unreachable!(),
+        } else {
+            None
         }
     }
 
     pub(crate) fn find_child_mut(&mut self, key: &[u8], depth: usize) -> Option<&mut Node> {
-        // find the child that corresponds to key[depth]
+        if let Some(ch) = key.get(depth) {
+            self.child_at_mut(*ch)
+        } else if key.len() == depth {
+            if self.term_leaf().is_some() {
+                Some(self.term_leaf_mut().unwrap())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn term_leaf(&self) -> Option<&Box<Node>> {
         match self {
-            Node::Node4(node4) => {
-                // if key exists
-                if let Some(ch) = key.get(depth) {
-                    node4.child_at_mut(*ch)
-                } else if key.len() == depth {
-                    if node4.term_leaf.is_some() {
-                        Some(node4.term_leaf_mut().unwrap())
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            }
-            Node::Node16(node16) => {
-                // if key exists
-                if let Some(ch) = key.get(depth) {
-                    node16.child_at_mut(*ch)
-                } else if key.len() == depth {
-                    if node16.term_leaf().is_some() {
-                        Some(node16.term_leaf_mut().unwrap())
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            }
+            Node::Node4(node4) => node4.term_leaf(),
+            Node::Node16(node16) => node16.term_leaf(),
+            Node::Node256(node256) => node256.term_leaf(),
+            _ => unimplemented!(),
+        }
+    }
+
+    pub(crate) fn term_leaf_mut(&mut self) -> Option<&mut Box<Node>> {
+        match self {
+            Node::Node4(node4) => node4.term_leaf_mut(),
+            Node::Node16(node16) => node16.term_leaf_mut(),
+            Node::Node256(node256) => node256.term_leaf_mut(),
+            _ => unimplemented!(),
+        }
+    }
+
+    pub(crate) fn child_at(&self, key: u8) -> Option<&Node> {
+        match self {
+            Node::Node4(node4) => node4.child_at(key),
+            Node::Node16(node16) => node16.child_at(key),
+            Node::Node256(node256) => node256.child_at(key),
+            _ => unimplemented!(),
+        }
+    }
+    pub(crate) fn child_at_mut(&mut self, key: u8) -> Option<&mut Node> {
+        match self {
+            Node::Node4(node4) => node4.child_at_mut(key),
+            Node::Node16(node16) => node16.child_at_mut(key),
+            Node::Node256(node256) => node256.child_at_mut(key),
             _ => unimplemented!(),
         }
     }
@@ -283,6 +221,7 @@ impl Node {
         match self {
             Node::Node4(node4) => node4.prefix_len(),
             Node::Node16(node16) => node16.prefix_len(),
+            Node::Node256(node256) => node256.prefix_len(),
             _ => unimplemented!(),
         }
     }
@@ -291,6 +230,7 @@ impl Node {
         match self {
             Node::Node4(node4) => node4.partial(),
             Node::Node16(node16) => node16.partial(),
+            Node::Node256(node256) => node256.partial(),
             _ => unimplemented!(),
         }
     }
@@ -299,6 +239,16 @@ impl Node {
         match self {
             Node::Node4(node4) => node4.children(),
             Node::Node16(node16) => node16.children(),
+            Node::Node256(node256) => node256.children(),
+            _ => unimplemented!(),
+        }
+    }
+
+    pub(crate) fn copy(&mut self, node_to_copy: Node) {
+        match self {
+            Node::Node4(node4) => panic!("should not be here"),
+            Node::Node16(node16) => node16.copy(node_to_copy),
+            Node::Node256(node256) => node256.copy(node_to_copy),
             _ => unimplemented!(),
         }
     }
@@ -309,7 +259,9 @@ impl Display for Node {
         match self {
             Node::Node4(node4) => write!(f, "{}", node4),
             Node::Node16(node16) => write!(f, "{}", node16),
-            node => write!(f, "{:?}", node),
+            Node::Node256(node256) => write!(f, "{}", node256),
+            Node::Leaf(leaf) => write!(f, "{}", leaf),
+            Node::None => write!(f, ""),
         }
     }
 }

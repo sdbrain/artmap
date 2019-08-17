@@ -60,9 +60,9 @@ impl Art {
                 // prefix does not match, stop
                 if prefix_len
                     != min(
-                    min(MAX_PREFIX, current.prefix_len()),
-                    current.partial().len(),
-                )
+                        min(MAX_PREFIX, current.prefix_len()),
+                        current.partial().len(),
+                    )
                 {
                     break;
                 }
@@ -412,18 +412,18 @@ mod tests {
                 }
             }
         };
-        //        let items = [
-        //            "Congo",
-        //            "Congregationalist",
-        //            "Congregationalist's",
-        //            "Congregationalists",
-        //        ]
-        //            .to_vec();
-        //        tfn(&items);
-        //        let items = ["Ac", "Acropolis", "Acrux"].to_vec();
-        //        tfn(&items);
-        //        let items = ["A", "AMD", "AMDs"].to_vec();
-        //        tfn(&items);
+        let items = [
+            "Congo",
+            "Congregationalist",
+            "Congregationalist's",
+            "Congregationalists",
+        ]
+        .to_vec();
+        tfn(&items);
+        let items = ["Ac", "Acropolis", "Acrux"].to_vec();
+        tfn(&items);
+        let items = ["A", "AMD", "AMDs"].to_vec();
+        tfn(&items);
         let items = [
             "daddy",
             "dagger",
@@ -433,7 +433,7 @@ mod tests {
             "daguerreotype\'s",
             "daguerreotyping",
         ]
-            .to_vec();
+        .to_vec();
         tfn(&items);
 
         //        assert_eq!(art.len(), 2);
@@ -710,6 +710,7 @@ mod tests {
         let f_name = "/tmp/words.txt";
         let mut art = Art::new();
         insert_from_file(&mut art, f_name);
+        print_art(&art);
         // TODO add asserts
     }
 
@@ -719,6 +720,7 @@ mod tests {
         let f_name = "/tmp/words.txt";
         let mut art = Art::new();
         insert_from_file(&mut art, f_name);
+        print_art(&art);
 
         // check if you can find all the words
         let fil = File::open(f_name).unwrap();
@@ -729,7 +731,7 @@ mod tests {
                 let line = line.trim();
                 let res = art.search(&line.as_bytes().to_vec());
                 if res.is_none() {
-                    println!("could not find {}", line);
+                    panic!("here")
                 }
             }
         }
