@@ -18,4 +18,3 @@ radix_trie = "0.1.4"
 [[bench]]
 name = "benchmark"
 harness = false
-

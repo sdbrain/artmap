@@ -1,32 +1,46 @@
-use crate::{Node, Node4, NodeMeta, MAX_PREFIX, Leaf};
+use crate::{Leaf, Node, Node16, Node4, NodeMeta, MAX_PREFIX};
 use std::borrow::{Borrow, BorrowMut};
-use std::fmt::{Display, Formatter, Error};
+use std::fmt::{Display, Error, Formatter};
+use std::mem::replace;
 
 impl Node4 {
-    const MAX_LEAF_INDEX: usize = 3 + 1;
-
-    fn find_index(&self, key: u8) -> usize {
+    fn find_index(&self, key: u8) -> Option<usize> {
         let mut index = 0usize;
         for c_key in self.keys().iter() {
             if *c_key == key {
-                break;
+                return Some(index);
             }
             index += 1;
         }
-        index
+        None
     }
+
+    pub(crate) fn should_grow(&self) -> bool {
+        self.keys().len() == 4
+    }
+
     pub(crate) fn child_at(&self, key: u8) -> Option<&Node> {
-        match self.children.get(self.find_index(key)) {
+        let index = self.find_index(key);
+        // no match found
+        if index.is_none() {
+            return None;
+        }
+
+        match self.children.get(index.unwrap()) {
             Some(item) => Some(item.1.borrow()),
-            None => None
+            None => None,
         }
     }
 
     pub(crate) fn child_at_mut(&mut self, key: u8) -> Option<&mut Node> {
         let index = self.find_index(key);
-        match self.children.get_mut(index) {
+        // no match found
+        if index.is_none() {
+            return None;
+        }
+        match self.children.get_mut(index.unwrap()) {
             Some(item) => Some(item.1.borrow_mut()),
-            None => None
+            None => None,
         }
     }
 
@@ -39,10 +53,8 @@ impl Node4 {
     }
 
     pub(crate) fn children(&self) -> Vec<(Option<u8>, &Node)> {
-        let mut res: Vec<(Option<u8>, &Node)> = self.children
-            .iter()
-            .map(|n| (Some(n.0), &n.1))
-            .collect();
+        let mut res: Vec<(Option<u8>, &Node)> =
+            self.children.iter().map(|n| (Some(n.0), &n.1)).collect();
         if self.term_leaf().is_some() {
             res.push((None, self.term_leaf.as_ref().unwrap()));
         }
@@ -50,23 +62,18 @@ impl Node4 {
     }
 
     pub(crate) fn keys(&self) -> Vec<u8> {
-        self.children.iter().map(|i| {
-            i.0
-        }).collect()
+        self.children.iter().map(|i| i.0).collect()
     }
 
     pub(crate) fn outgoing_children(&self) -> Vec<&Node> {
-        self.children.iter().map(|i| {
-            i.1.borrow()
-        }).collect()
+        self.children.iter().map(|i| i.1.borrow()).collect()
     }
 
+    pub(crate) fn term_leaf_mut(&mut self) -> Option<&mut Box<Node>> {
+        self.term_leaf.as_mut()
+    }
     pub(crate) fn term_leaf(&self) -> Option<&Box<Node>> {
         self.term_leaf.as_ref()
-    }
-
-    pub(crate) fn max_leaf_index(&self) -> usize {
-        Node4::MAX_LEAF_INDEX
     }
 
     pub(crate) fn new() -> Self {
@@ -89,13 +96,10 @@ impl Node4 {
     }
 
     pub(crate) fn add_child(&mut self, node: Node, key_char: Option<u8>) {
-        // TODO add grow cond
         match key_char {
             Some(current_char) => {
                 self.children.push((current_char, node));
-                self.children.sort_unstable_by(|a, b| {
-                    a.0.cmp(&b.0)
-                });
+                self.children.sort_unstable_by(|a, b| a.0.cmp(&b.0));
             }
             None => {
                 // key char would be None in the case of leaf nodes.
@@ -107,14 +111,23 @@ impl Node4 {
 
 impl Display for Node4 {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f,
-               "Node4({clen}) {keys:?} {keys_ch:?} ({leaf}) - ({plen}) [{partial:?}]",
-               clen = self.children().len(),
-               keys = self.keys(),
-               keys_ch = self.keys().iter().map(|i| *i as char).collect::<Vec<char>>(),
-               plen = self.prefix_len(),
-               partial = self.partial().iter().map(|c| *c as char).collect::<Vec<char>>(),
-               leaf = self.term_leaf().is_some()
+        write!(
+            f,
+            "Node4({clen}) {keys:?} {keys_ch:?} ({leaf}) - ({plen}) [{partial:?}]",
+            clen = self.children().len(),
+            keys = self.keys(),
+            keys_ch = self
+                .keys()
+                .iter()
+                .map(|i| *i as char)
+                .collect::<Vec<char>>(),
+            plen = self.prefix_len(),
+            partial = self
+                .partial()
+                .iter()
+                .map(|c| *c as char)
+                .collect::<Vec<char>>(),
+            leaf = self.term_leaf().is_some()
         )
     }
 }
@@ -135,9 +148,11 @@ mod tests {
 
         let keys: Vec<u8> = (1..5).collect();
         let nodes = vec![Node::None; 4];
-        let res: Vec<(Option<u8>, &Node)> = keys.iter().zip(nodes.iter()).map(|x| {
-            (Some(*x.0), x.1)
-        }).collect();
+        let res: Vec<(Option<u8>, &Node)> = keys
+            .iter()
+            .zip(nodes.iter())
+            .map(|x| (Some(*x.0), x.1))
+            .collect();
         assert_eq!(node4.children(), res);
     }
 
@@ -169,9 +184,7 @@ mod tests {
         items.push((2, Node::None));
         items.push((4, Node::None));
 
-        items.sort_unstable_by(|a, b| {
-            a.0.cmp(&b.0)
-        });
+        items.sort_unstable_by(|a, b| a.0.cmp(&b.0));
 
         println!("&items = {:#?}", &items);
     }
@@ -183,11 +196,25 @@ mod tests {
         node4.add_child(Node::None, Some(4));
         node4.add_child(Node::None, Some(2));
         node4.add_child(Node::None, Some(3));
-        assert_eq!("Node4(4) [1, 2, 3, 4] (false) - (0) [[]]", format!("{}", &node4));
+        let chars = vec![1, 2, 3, 4]
+            .iter()
+            .map(|i| *i as u8 as char)
+            .collect::<Vec<char>>();
+        let match_str = format!(
+            "Node4(4) [1, 2, 3, 4] {chars:?} (false) - (0) [[]]",
+            chars = chars
+        );
+        let node_str = format!("{}", &node4);
+        assert_eq!(match_str, node_str);
 
         let k = "1".as_bytes().to_vec();
         let leaf = Node::Leaf(Leaf::new(k.clone(), k));
         node4.add_child(leaf.clone(), None);
-        assert_eq!("Node4(5) [1, 2, 3, 4] (true) - (0) [[]]", format!("{}", &node4));
+        let match_str = format!(
+            "Node4(5) [1, 2, 3, 4] {chars:?} (true) - (0) [[]]",
+            chars = chars
+        );
+        let node_str = format!("{}", &node4);
+        assert_eq!(match_str, node_str);
     }
 }

@@ -1,4 +1,4 @@
-use crate::{Art, Leaf, Node, Node4, NodeMeta, MAX_PREFIX};
+use crate::{Art, Leaf, Node, Node16, Node4, NodeMeta, MAX_PREFIX};
 use std::borrow::{Borrow, BorrowMut};
 use std::cmp::min;
 use std::mem::replace;
@@ -115,13 +115,11 @@ impl Art {
                     // add the leaves to the new node 4
 
                     let leaf = leaf.clone();
-                    let key_char =
-                        Node::key_char(&leaf.key, depth);
+                    let key_char = Node::key_char(&leaf.key, depth);
                     node4.add_child(Node::Leaf(leaf), key_char);
 
                     let leaf2 = Leaf::new(key, value);
-                    let key_char =
-                        Node::key_char(&leaf2.key, depth);
+                    let key_char = Node::key_char(&leaf2.key, depth);
                     node4.add_child(Node::Leaf(leaf2), key_char);
 
                     *current = Node::Node4(node4);
@@ -244,6 +242,7 @@ impl Art {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Art, Leaf, Node, Node16, Node4, NodeMeta, MAX_PREFIX};
     use std::collections::VecDeque;
     use std::fs::{read, File};
     use std::io::{BufRead, BufReader};
@@ -257,7 +256,11 @@ mod tests {
     }
 
     fn _verify_children(node: &Node4, elems_to_match: Vec<u8>) {
-        let keys: Vec<u8> = node.children().iter().map(|i| i.0.unwrap_or_default()).collect();
+        let keys: Vec<u8> = node
+            .children()
+            .iter()
+            .map(|i| i.0.unwrap_or_default())
+            .collect();
         assert_eq!(keys, elems_to_match);
     }
 
@@ -305,52 +308,49 @@ mod tests {
                         key = to_string(&leaf.key),
                         val = to_string(&leaf.value)
                     );
+                    continue;
                 }
                 Node::None => {
                     continue;
                 }
-                Node::Node4(node4 )=> {
-                    println!(
-                        "{tag:>indent$} char={char} {node}",
-                        indent = indent,
-                        tag = "",
-                        char = current_char as u8 as char,
-                        node=node4
-                    );
+                _ => {}
+            }
 
-                    if node4.meta.prefix_len < MAX_PREFIX
-                        && node4.meta.partial.len() != node4.meta.prefix_len
-                    {
-                        eprintln!(
-                            "{tag:>indent$} Error: partial len does not match prefix len",
-                            indent = indent,
-                            tag = ""
-                        );
-                    }
+            println!(
+                "{tag:>indent$} char={char} {node}",
+                indent = indent,
+                tag = "",
+                char = current_char as u8 as char,
+                node = current
+            );
 
-                    // push a marker for dealing with indentation
-                    indent += 5;
-                    let x: i8 = -1;
-                    stack.push((x, &Node::None));
+            if current.prefix_len() < MAX_PREFIX && current.partial().len() != current.prefix_len()
+            {
+                eprintln!(
+                    "{tag:>indent$} Error: partial len does not match prefix len",
+                    indent = indent,
+                    tag = ""
+                );
+            }
 
-                    //queue up the nodes for visiting
-                    for (character, child_node) in node4.children().iter() {
-                        if let Node::None = child_node {
-                            continue;
-                        } else {
-                            match character {
-                                Some(ch) => {
-                                    stack.push((*ch as i8, child_node));
-                                },
-                                None => {
-                                    stack.push((-2, child_node));
-                                }
-                            }
+            // push a marker for dealing with indentation
+            indent += 5;
+            let x: i8 = -1;
+            stack.push((x, &Node::None));
+
+            //queue up the nodes for visiting
+            for (character, child_node) in current.children().iter() {
+                if let Node::None = child_node {
+                    continue;
+                } else {
+                    match character {
+                        Some(ch) => {
+                            stack.push((*ch as i8, child_node));
+                        }
+                        None => {
+                            stack.push((-2, child_node));
                         }
                     }
-                },
-                _ => {
-                    unimplemented!()
                 }
             }
         }
@@ -388,6 +388,17 @@ mod tests {
     }
 
     #[test]
+    fn test_grow_16() {
+        let mut keys = (65..85).collect::<Vec<u8>>();
+        let mut art = Art::new();
+        for key in keys.iter() {
+            art.insert(vec![*key], vec![*key]);
+        }
+        println!("&art = {:#?}", &art);
+        print_art(&art);
+    }
+
+    #[test]
     fn test_insert_second_leaf() {
         // TODO add test cases for these cases
         let tfn = |items: &Vec<&str>| {
@@ -401,18 +412,18 @@ mod tests {
                 }
             }
         };
-//        let items = [
-//            "Congo",
-//            "Congregationalist",
-//            "Congregationalist's",
-//            "Congregationalists",
-//        ]
-//            .to_vec();
-//        tfn(&items);
-//        let items = ["Ac", "Acropolis", "Acrux"].to_vec();
-//        tfn(&items);
-//        let items = ["A", "AMD", "AMDs"].to_vec();
-//        tfn(&items);
+        //        let items = [
+        //            "Congo",
+        //            "Congregationalist",
+        //            "Congregationalist's",
+        //            "Congregationalists",
+        //        ]
+        //            .to_vec();
+        //        tfn(&items);
+        //        let items = ["Ac", "Acropolis", "Acrux"].to_vec();
+        //        tfn(&items);
+        //        let items = ["A", "AMD", "AMDs"].to_vec();
+        //        tfn(&items);
         let items = [
             "daddy",
             "dagger",
@@ -420,7 +431,7 @@ mod tests {
             "daguerreotypes",
             "daguerreotyped",
             "daguerreotype\'s",
-            "daguerreotyping"
+            "daguerreotyping",
         ]
             .to_vec();
         tfn(&items);
@@ -450,336 +461,338 @@ mod tests {
         //            panic!("Node should be of type node4 {:#?}", &art.root);
         //        }
     }
-//
-//    #[test]
-//    fn test_prefix_len_greater_than_prefix() {
-//        let mut art = Art::new();
-//        let mut items = Vec::new();
-//        items.push("A".repeat(10));
-//        items.push("A".repeat(20));
-//        let items: Vec<&str> = items.iter().map(|s| s.as_str()).collect();
-//        _insert(&mut art, &items);
-//
-//        assert_eq!(art.len(), 2);
-//
-//        if let Node::Node4(node) = &art.root.borrow() {
-//            assert_eq!(node.meta.prefix_len, 10);
-//            assert_eq!(node.meta.partial.len(), MAX_PREFIX);
-//            assert_eq!(
-//                node.meta.partial,
-//                "A".repeat(MAX_PREFIX).as_bytes().to_vec()
-//            );
-//            assert_eq!(node.len(), 2);
-//
-//            // all nodes should be of type leaf
-//            for child in node.children.iter() {
-//                match child {
-//                    Node::Leaf(_) => {}
-//                    Node::None => continue,
-//                    _ => panic!(" Node should be of type leaf"),
-//                }
-//            }
-//
-//            let A = node.children.get(node.max_leaf_index());
-//            let ch = *"A".repeat(20).as_bytes().first().unwrap();
-//            let M = node.children.get(ch as usize);
-//
-//            assert!(A.is_some());
-//            assert!(M.is_some());
-//        } else {
-//            // node is not of type node4 so fail
-//            panic!("Node should be of type node4 {:#?}", &art.root);
-//        }
-//    }
-//
-//    #[test]
-//    fn test_insert_node4_same_prefix_as_existing() {
-//        let mut art = Art::new();
-//        let items = vec!["BMD", "BMDs", "BMBs"];
-//        _insert(&mut art, &items);
-//        let x: Vec<String> = items.iter().skip(4).map(|t| String::from(*t)).collect();
-//
-//        assert_eq!(art.len(), 3);
-//        if let Node::Node4(node) = &art.root.borrow() {
-//            assert_eq!(node.len(), 2);
-//            assert_eq!(node.meta.prefix_len, 2);
-//            assert_eq!(node.meta.partial.len(), 2);
-//            assert_eq!(
-//                node.meta.partial,
-//                ['B', 'M'].iter().map(|c| *c as u8).collect::<Vec<u8>>()
-//            );
-//            _verify_children(node, vec!['B' as u8 as usize, 'D' as u8 as usize]);
-//
-//            let b_node = node.children.get('B' as u8 as usize);
-//            assert!(b_node.is_some());
-//            let b_node = b_node.unwrap().borrow();
-//            if let Node::Leaf(leaf) = b_node {
-//                assert_eq!(leaf.key, Vec::from("BMBs".as_bytes()));
-//            } else {
-//                panic!("b_node should be a leaf");
-//            }
-//
-//            let d_node = node.children.get('D' as u8 as usize);
-//            assert!(d_node.is_some());
-//            let m_node = d_node.unwrap().borrow();
-//            if let Node::Node4(node4) = m_node {
-//                assert_eq!(node4.len(), 2);
-//                assert_eq!(node4.prefix_len(), 0);
-//                assert!(node4.partial().is_empty());
-//            } else {
-//                panic!("d_node should be node4");
-//            }
-//        } else {
-//            // node is not of type node4 so fail
-//            panic!("Node should be of type node4 {:#?}", &art.root);
-//        }
-//    }
-//
-//    #[test]
-//    fn test_insert_node4_same_prefix_as_existing_next_level() {
-//        let mut art = Art::new();
-//        let items = vec!["B", "BMD", "BMDs"];
-//        _insert(&mut art, &items);
-//        // size of the trie should be 3
-//        assert_eq!(art.len(), 3);
-//
-//        // check the new nodes position and prefix relocation
-//        if let Node::Node4(node) = &art.root.borrow() {
-//            assert_eq!(node.len(), 2);
-//            assert_eq!(node.meta.prefix_len, 1);
-//            assert_eq!(node.meta.partial.len(), 1);
-//            assert_eq!(
-//                node.meta.partial,
-//                ['B'].iter().map(|c| *c as u8).collect::<Vec<u8>>()
-//            );
-//
-//            _verify_children(&node, vec!['M' as u8 as usize, node.max_leaf_index()]);
-//
-//            let m_node = node.children.get('M' as u8 as usize);
-//            assert!(m_node.is_some());
-//            let m_node = m_node.unwrap().borrow();
-//
-//            if let Node::Node4(node) = m_node {
-//                assert_eq!(node.len(), 2);
-//                assert_eq!(node.meta.prefix_len, 1);
-//                assert_eq!(node.meta.partial.len(), 1);
-//                assert_eq!(
-//                    node.meta.partial,
-//                    ['D'].iter().map(|c| *c as u8).collect::<Vec<u8>>()
-//                );
-//
-//                _verify_children(&node, vec!['s' as u8 as usize, node.max_leaf_index()]);
-//            } else {
-//                panic!("m_node should be a node4");
-//            }
-//        } else {
-//            // node is not of type node4 so fail
-//            panic!("Node should be of type node4 {:#?}", &art.root);
-//        }
-//    }
-//
-//    #[test]
-//    fn test_longest_common_prefix() {
-//        let v1 = vec![1, 2, 3];
-//        let v2 = vec![1, 2, 3, 4];
-//        let depth = 0;
-//
-//        let prefix_len = Art::longest_common_prefix(&v1, &v2, depth);
-//        let partial = Art::calculate_partial(&v1, depth, prefix_len);
-//        assert_eq!(prefix_len, 3);
-//        assert_eq!(partial, vec![1, 2, 3]);
-//
-//        let depth = 1;
-//        let prefix_len = Art::longest_common_prefix(&v1, &v2, depth);
-//        let partial = Art::calculate_partial(&v1, depth, prefix_len);
-//        assert_eq!(prefix_len, 2);
-//        assert_eq!(partial, vec![2, 3]);
-//
-//        let v1 = vec![1];
-//        let v2 = vec![1, 2, 3, 4];
-//        let depth = 0;
-//        let prefix_len = Art::longest_common_prefix(&v1, &v2, depth);
-//        let partial = Art::calculate_partial(&v1, depth, prefix_len);
-//        assert_eq!(prefix_len, 1);
-//        assert_eq!(partial, vec![1]);
-//
-//        let a = "Acropolis".to_string().as_bytes().to_owned();
-//        let b = "Acrux".to_string().as_bytes().to_owned();
-//        let max_depth = min(a.len(), b.len());
-//        let mut depth = 0;
-//        let prefix_len = Art::longest_common_prefix(&a, &b, depth);
-//        let partial = Art::calculate_partial(&a, depth, prefix_len);
-//
-//        assert_eq!(prefix_len, 3);
-//        assert_eq!(partial, "Acr".as_bytes());
-//    }
-//
-//    #[test]
-//    fn test_insert_with_different_char_when_prefix_match_exists() {
-//        let mut art = Art::new();
-//        let items = vec!["A", "AMD", "ABDs"];
-//        _insert(&mut art, &items);
-//        assert_eq!(art.len(), 3);
-//
-//        if let Node::Node4(node) = &art.root.borrow() {
-//            assert_eq!(node.len(), 3);
-//            assert_eq!(node.meta.partial.len(), 1);
-//            assert_eq!(node.meta.prefix_len, 1);
-//
-//            _verify_children(
-//                &node,
-//                vec![
-//                    'B' as u8 as usize,
-//                    'M' as u8 as usize,
-//                    node.max_leaf_index(),
-//                ],
-//            );
-//        } else {
-//            panic!("Should be a node 4");
-//        }
-//    }
-//
-//    #[test]
-//    fn test_update_of_existing_keys() {
-//        let mut art = Art::new();
-//        let items = vec!["A", "AMD", "ABDs"];
-//        _insert(&mut art, &items);
-//        // use this function to transform the value
-//        let c_fn = |c: u8| c + 1;
-//        _insert_with_key_fn(&mut art, &items, c_fn);
-//        assert_eq!(art.len(), 3);
-//
-//        if let Node::Node4(node) = &art.root.borrow() {
-//            assert_eq!(node.len(), 3);
-//            assert_eq!(node.meta.partial.len(), 1);
-//            assert_eq!(node.meta.prefix_len, 1);
-//
-//            _verify_children(
-//                &node,
-//                vec![
-//                    'B' as u8 as usize,
-//                    'M' as u8 as usize,
-//                    node.max_leaf_index(),
-//                ],
-//            );
-//
-//        //            for key in keys {
-//        //                let value = node.children.get(key);
-//        //                if let Node::Leaf(leaf) = value.unwrap().borrow() {
-//        //                    let x: Vec<u8> = leaf.key.iter().map(|x| c_fn(*x)).collect();
-//        //                    assert_eq!(leaf.value, x);
-//        //                } else {
-//        //                    panic!("Should be a leaf ");
-//        //                }
-//        //            }
-//        } else {
-//            panic!("Should be a node 4");
-//        }
-//    }
-//
-//    #[test]
-//    fn test_grow() {
-//        let mut art = Art::new();
-//        let mut items = VecDeque::new();
-//        for i in 1..100 {
-//            items.push_front(i as u8);
-//        }
-//        for item in items {
-//            let item = Vec::from(vec![item]);
-//            art.insert(item.clone(), item);
-//        }
-//
-//        dbg!(art);
-//    }
-//
-//
-//    #[test]
-//    fn test_small_batch_insert() {
-//        let f_name = "/tmp/words.txt";
-//        let mut art = Art::new();
-//        insert_from_file(&mut art, f_name);
-//        // TODO add asserts
-//    }
-//
-//    #[test]
-//    fn test_search() {
-//        let f_name = "/tmp/words.txt";
-//        let mut art = Art::new();
-//        insert_from_file(&mut art, f_name);
-//
-//        // check if you can find all the words
-//        let fil = File::open(f_name).unwrap();
-//        let reader = BufReader::new(fil);
-//        for line in reader.lines() {
-//            if line.is_ok() {
-//                let line = line.unwrap();
-//                let line = line.trim();
-//                let res = art.search(&line.as_bytes().to_vec());
-//                if res.is_none() {
-//                    println!("could not find {}", line);
-//                }
-//            }
-//        }
-//    }
-//
-//    #[test]
-//    fn test_simple_search() {
-//        let mut art = Art::new();
-//        let items = vec!["A", "AMD", "AMDs"];
-//        _insert(&mut art, &items);
-//
-//        for item in items {
-//            let res = art.search(&item.as_bytes().to_vec());
-//            println!("res = {:#?}", res);
-//        }
-//    }
-//
-//    fn insert_from_file(art: &mut Art, f_name: &str) {
-//        let fil = File::open(f_name).unwrap();
-//        let mut reader = BufReader::new(fil);
-//        loop {
-//            let mut buffer = String::new();
-//            let x = reader.read_line(&mut buffer);
-//            if x.is_err() || buffer.is_empty() {
-//                break;
-//            }
-//            println!("&buffer = {:?}", &buffer);
-//            if buffer.trim() == "daguerreotyping" {
-//                print_art(&art);
-//                println!("I am here");
-//            }
-//            art.insert(
-//                buffer.trim().clone().as_bytes().to_vec(),
-//                buffer.trim().clone().as_bytes().to_vec(),
-//            );
-//        }
-//    }
-//
-//    #[test]
-//    fn test_simd_string_match() {
-//        let a = "david".to_string();
-//        let b = "brainard".to_string();
-//        let c = "davidbrainard".to_string();
-//        let d = "davibrainard".to_string();
-//
-//        let res = Art::equals(a.as_bytes(), a.as_bytes());
-//        assert_eq!(true, res);
-//
-//        let res = Art::equals(a.as_bytes(), b.as_bytes());
-//        assert_eq!(false, res);
-//
-//        let res = Art::equals(a.as_bytes(), c.as_bytes());
-//        assert_eq!(false, res);
-//
-//        let res = Art::equals(a.as_bytes(), d.as_bytes());
-//        assert_eq!(false, res);
-//    }
-//
-//    #[test]
-//    fn test_vec_capabilities() {
-//        let mut items = Vec::new();
-//        items.push(Box::new(Node::None));
-//
-//        let x = items.get(0).unwrap();
-//    }
+
+    //
+    //    #[test]
+    //    fn test_prefix_len_greater_than_prefix() {
+    //        let mut art = Art::new();
+    //        let mut items = Vec::new();
+    //        items.push("A".repeat(10));
+    //        items.push("A".repeat(20));
+    //        let items: Vec<&str> = items.iter().map(|s| s.as_str()).collect();
+    //        _insert(&mut art, &items);
+    //
+    //        assert_eq!(art.len(), 2);
+    //
+    //        if let Node::Node4(node) = &art.root.borrow() {
+    //            assert_eq!(node.meta.prefix_len, 10);
+    //            assert_eq!(node.meta.partial.len(), MAX_PREFIX);
+    //            assert_eq!(
+    //                node.meta.partial,
+    //                "A".repeat(MAX_PREFIX).as_bytes().to_vec()
+    //            );
+    //            assert_eq!(node.len(), 2);
+    //
+    //            // all nodes should be of type leaf
+    //            for child in node.children.iter() {
+    //                match child {
+    //                    Node::Leaf(_) => {}
+    //                    Node::None => continue,
+    //                    _ => panic!(" Node should be of type leaf"),
+    //                }
+    //            }
+    //
+    //            let A = node.children.get(node.max_leaf_index());
+    //            let ch = *"A".repeat(20).as_bytes().first().unwrap();
+    //            let M = node.children.get(ch as usize);
+    //
+    //            assert!(A.is_some());
+    //            assert!(M.is_some());
+    //        } else {
+    //            // node is not of type node4 so fail
+    //            panic!("Node should be of type node4 {:#?}", &art.root);
+    //        }
+    //    }
+    //
+    //    #[test]
+    //    fn test_insert_node4_same_prefix_as_existing() {
+    //        let mut art = Art::new();
+    //        let items = vec!["BMD", "BMDs", "BMBs"];
+    //        _insert(&mut art, &items);
+    //        let x: Vec<String> = items.iter().skip(4).map(|t| String::from(*t)).collect();
+    //
+    //        assert_eq!(art.len(), 3);
+    //        if let Node::Node4(node) = &art.root.borrow() {
+    //            assert_eq!(node.len(), 2);
+    //            assert_eq!(node.meta.prefix_len, 2);
+    //            assert_eq!(node.meta.partial.len(), 2);
+    //            assert_eq!(
+    //                node.meta.partial,
+    //                ['B', 'M'].iter().map(|c| *c as u8).collect::<Vec<u8>>()
+    //            );
+    //            _verify_children(node, vec!['B' as u8 as usize, 'D' as u8 as usize]);
+    //
+    //            let b_node = node.children.get('B' as u8 as usize);
+    //            assert!(b_node.is_some());
+    //            let b_node = b_node.unwrap().borrow();
+    //            if let Node::Leaf(leaf) = b_node {
+    //                assert_eq!(leaf.key, Vec::from("BMBs".as_bytes()));
+    //            } else {
+    //                panic!("b_node should be a leaf");
+    //            }
+    //
+    //            let d_node = node.children.get('D' as u8 as usize);
+    //            assert!(d_node.is_some());
+    //            let m_node = d_node.unwrap().borrow();
+    //            if let Node::Node4(node4) = m_node {
+    //                assert_eq!(node4.len(), 2);
+    //                assert_eq!(node4.prefix_len(), 0);
+    //                assert!(node4.partial().is_empty());
+    //            } else {
+    //                panic!("d_node should be node4");
+    //            }
+    //        } else {
+    //            // node is not of type node4 so fail
+    //            panic!("Node should be of type node4 {:#?}", &art.root);
+    //        }
+    //    }
+    //
+    //    #[test]
+    //    fn test_insert_node4_same_prefix_as_existing_next_level() {
+    //        let mut art = Art::new();
+    //        let items = vec!["B", "BMD", "BMDs"];
+    //        _insert(&mut art, &items);
+    //        // size of the trie should be 3
+    //        assert_eq!(art.len(), 3);
+    //
+    //        // check the new nodes position and prefix relocation
+    //        if let Node::Node4(node) = &art.root.borrow() {
+    //            assert_eq!(node.len(), 2);
+    //            assert_eq!(node.meta.prefix_len, 1);
+    //            assert_eq!(node.meta.partial.len(), 1);
+    //            assert_eq!(
+    //                node.meta.partial,
+    //                ['B'].iter().map(|c| *c as u8).collect::<Vec<u8>>()
+    //            );
+    //
+    //            _verify_children(&node, vec!['M' as u8 as usize, node.max_leaf_index()]);
+    //
+    //            let m_node = node.children.get('M' as u8 as usize);
+    //            assert!(m_node.is_some());
+    //            let m_node = m_node.unwrap().borrow();
+    //
+    //            if let Node::Node4(node) = m_node {
+    //                assert_eq!(node.len(), 2);
+    //                assert_eq!(node.meta.prefix_len, 1);
+    //                assert_eq!(node.meta.partial.len(), 1);
+    //                assert_eq!(
+    //                    node.meta.partial,
+    //                    ['D'].iter().map(|c| *c as u8).collect::<Vec<u8>>()
+    //                );
+    //
+    //                _verify_children(&node, vec!['s' as u8 as usize, node.max_leaf_index()]);
+    //            } else {
+    //                panic!("m_node should be a node4");
+    //            }
+    //        } else {
+    //            // node is not of type node4 so fail
+    //            panic!("Node should be of type node4 {:#?}", &art.root);
+    //        }
+    //    }
+    //
+    //    #[test]
+    //    fn test_longest_common_prefix() {
+    //        let v1 = vec![1, 2, 3];
+    //        let v2 = vec![1, 2, 3, 4];
+    //        let depth = 0;
+    //
+    //        let prefix_len = Art::longest_common_prefix(&v1, &v2, depth);
+    //        let partial = Art::calculate_partial(&v1, depth, prefix_len);
+    //        assert_eq!(prefix_len, 3);
+    //        assert_eq!(partial, vec![1, 2, 3]);
+    //
+    //        let depth = 1;
+    //        let prefix_len = Art::longest_common_prefix(&v1, &v2, depth);
+    //        let partial = Art::calculate_partial(&v1, depth, prefix_len);
+    //        assert_eq!(prefix_len, 2);
+    //        assert_eq!(partial, vec![2, 3]);
+    //
+    //        let v1 = vec![1];
+    //        let v2 = vec![1, 2, 3, 4];
+    //        let depth = 0;
+    //        let prefix_len = Art::longest_common_prefix(&v1, &v2, depth);
+    //        let partial = Art::calculate_partial(&v1, depth, prefix_len);
+    //        assert_eq!(prefix_len, 1);
+    //        assert_eq!(partial, vec![1]);
+    //
+    //        let a = "Acropolis".to_string().as_bytes().to_owned();
+    //        let b = "Acrux".to_string().as_bytes().to_owned();
+    //        let max_depth = min(a.len(), b.len());
+    //        let mut depth = 0;
+    //        let prefix_len = Art::longest_common_prefix(&a, &b, depth);
+    //        let partial = Art::calculate_partial(&a, depth, prefix_len);
+    //
+    //        assert_eq!(prefix_len, 3);
+    //        assert_eq!(partial, "Acr".as_bytes());
+    //    }
+    //
+    //    #[test]
+    //    fn test_insert_with_different_char_when_prefix_match_exists() {
+    //        let mut art = Art::new();
+    //        let items = vec!["A", "AMD", "ABDs"];
+    //        _insert(&mut art, &items);
+    //        assert_eq!(art.len(), 3);
+    //
+    //        if let Node::Node4(node) = &art.root.borrow() {
+    //            assert_eq!(node.len(), 3);
+    //            assert_eq!(node.meta.partial.len(), 1);
+    //            assert_eq!(node.meta.prefix_len, 1);
+    //
+    //            _verify_children(
+    //                &node,
+    //                vec![
+    //                    'B' as u8 as usize,
+    //                    'M' as u8 as usize,
+    //                    node.max_leaf_index(),
+    //                ],
+    //            );
+    //        } else {
+    //            panic!("Should be a node 4");
+    //        }
+    //    }
+    //
+    //    #[test]
+    //    fn test_update_of_existing_keys() {
+    //        let mut art = Art::new();
+    //        let items = vec!["A", "AMD", "ABDs"];
+    //        _insert(&mut art, &items);
+    //        // use this function to transform the value
+    //        let c_fn = |c: u8| c + 1;
+    //        _insert_with_key_fn(&mut art, &items, c_fn);
+    //        assert_eq!(art.len(), 3);
+    //
+    //        if let Node::Node4(node) = &art.root.borrow() {
+    //            assert_eq!(node.len(), 3);
+    //            assert_eq!(node.meta.partial.len(), 1);
+    //            assert_eq!(node.meta.prefix_len, 1);
+    //
+    //            _verify_children(
+    //                &node,
+    //                vec![
+    //                    'B' as u8 as usize,
+    //                    'M' as u8 as usize,
+    //                    node.max_leaf_index(),
+    //                ],
+    //            );
+    //
+    //        //            for key in keys {
+    //        //                let value = node.children.get(key);
+    //        //                if let Node::Leaf(leaf) = value.unwrap().borrow() {
+    //        //                    let x: Vec<u8> = leaf.key.iter().map(|x| c_fn(*x)).collect();
+    //        //                    assert_eq!(leaf.value, x);
+    //        //                } else {
+    //        //                    panic!("Should be a leaf ");
+    //        //                }
+    //        //            }
+    //        } else {
+    //            panic!("Should be a node 4");
+    //        }
+    //    }
+    //
+    //    #[test]
+    //    fn test_grow() {
+    //        let mut art = Art::new();
+    //        let mut items = VecDeque::new();
+    //        for i in 1..100 {
+    //            items.push_front(i as u8);
+    //        }
+    //        for item in items {
+    //            let item = Vec::from(vec![item]);
+    //            art.insert(item.clone(), item);
+    //        }
+    //
+    //        dbg!(art);
+    //    }
+    //
+    //
+    #[test]
+    fn test_small_batch_insert() {
+        let f_name = "/tmp/words.txt";
+        let mut art = Art::new();
+        insert_from_file(&mut art, f_name);
+        // TODO add asserts
+    }
+
+    //
+    #[test]
+    fn test_search() {
+        let f_name = "/tmp/words.txt";
+        let mut art = Art::new();
+        insert_from_file(&mut art, f_name);
+
+        // check if you can find all the words
+        let fil = File::open(f_name).unwrap();
+        let reader = BufReader::new(fil);
+        for line in reader.lines() {
+            if line.is_ok() {
+                let line = line.unwrap();
+                let line = line.trim();
+                let res = art.search(&line.as_bytes().to_vec());
+                if res.is_none() {
+                    println!("could not find {}", line);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_simple_search() {
+        let mut art = Art::new();
+        let items = vec!["A", "AMD", "AMDs"];
+        _insert(&mut art, &items);
+
+        for item in items {
+            let res = art.search(&item.as_bytes().to_vec());
+            println!("res = {:#?}", res);
+        }
+    }
+
+    fn insert_from_file(art: &mut Art, f_name: &str) {
+        let fil = File::open(f_name).unwrap();
+        let mut reader = BufReader::new(fil);
+        loop {
+            let mut buffer = String::new();
+            let x = reader.read_line(&mut buffer);
+            if x.is_err() || buffer.is_empty() {
+                break;
+            }
+            println!("&buffer = {:?}", &buffer);
+            if buffer.trim() == "daguerreotyping" {
+                print_art(&art);
+                println!("I am here");
+            }
+            art.insert(
+                buffer.trim().clone().as_bytes().to_vec(),
+                buffer.trim().clone().as_bytes().to_vec(),
+            );
+        }
+    }
+    //
+    //    #[test]
+    //    fn test_simd_string_match() {
+    //        let a = "david".to_string();
+    //        let b = "brainard".to_string();
+    //        let c = "davidbrainard".to_string();
+    //        let d = "davibrainard".to_string();
+    //
+    //        let res = Art::equals(a.as_bytes(), a.as_bytes());
+    //        assert_eq!(true, res);
+    //
+    //        let res = Art::equals(a.as_bytes(), b.as_bytes());
+    //        assert_eq!(false, res);
+    //
+    //        let res = Art::equals(a.as_bytes(), c.as_bytes());
+    //        assert_eq!(false, res);
+    //
+    //        let res = Art::equals(a.as_bytes(), d.as_bytes());
+    //        assert_eq!(false, res);
+    //    }
+    //
+    //    #[test]
+    //    fn test_vec_capabilities() {
+    //        let mut items = Vec::new();
+    //        items.push(Box::new(Node::None));
+    //
+    //        let x = items.get(0).unwrap();
+    //    }
 }

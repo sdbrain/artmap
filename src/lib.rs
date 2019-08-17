@@ -36,14 +36,14 @@ struct Leaf {
 struct Node4 {
     meta: NodeMeta,
     children: Vec<(u8, Node)>,
-    term_leaf: Option<Box<Node>>
+    term_leaf: Option<Box<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 struct Node16 {
     meta: NodeMeta,
-    keys: Vec<u8>,
-    children: Vec<Node>,
+    children: Vec<(u8, Node)>,
+    term_leaf: Option<Box<Node>>,
 }
 
 //#[derive(Debug, Clone)]

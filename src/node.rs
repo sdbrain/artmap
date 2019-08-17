@@ -1,6 +1,8 @@
-use crate::{Node, NodeMeta, MAX_PREFIX};
-use std::cmp::min;
+use crate::{Node, Node16, NodeMeta, MAX_PREFIX};
 use std::borrow::{Borrow, BorrowMut};
+use std::cmp::min;
+use std::fmt::{Display, Error, Formatter};
+use std::mem::replace;
 
 impl Node {
     pub(crate) fn key_char(key: &[u8], depth: usize) -> Option<u8> {
@@ -17,13 +19,7 @@ impl Node {
         //        let two = &key[depth..];
         //        ne_idx(one, two)
 
-        let meta = match self {
-            Node::Node4(node4) => &node4.meta,
-            Node::Node16(node16) => &node16.meta,
-            Node::Node256(node256) => &node256.meta,
-            // TODO return error
-            _ => panic!("Should not be here"),
-        };
+        let meta = self.get_meta();
 
         let mut idx = 0;
         while idx < max_match_len {
@@ -80,20 +76,20 @@ impl Node {
                         match node4.children.first() {
                             Some(child) => {
                                 tmp_node = child.1.borrow();
-                            },
-                            None => panic!("Should not be here")
+                            }
+                            None => panic!("Should not be here"),
                         }
                     }
                 }
                 Node::Node16(node16) => {
-                    // if we have a node at LEAF_INDEX, assign tmp_node to that and continue
-                    // else use the first element in the children list
-                    match node16.children.get(node16.max_leaf_index()).unwrap() {
-                        Node::None => {
-                            tmp_node = node16.children.first().unwrap();
-                        }
-                        node => {
-                            tmp_node = node;
+                    if node16.term_leaf.is_some() {
+                        tmp_node = node16.term_leaf.as_ref().unwrap();
+                    } else {
+                        match node16.children.first() {
+                            Some(child) => {
+                                tmp_node = child.1.borrow();
+                            }
+                            None => panic!("Should not be here"),
                         }
                     }
                 }
@@ -153,12 +149,36 @@ impl Node {
         self.get_meta_mut().partial = new_partial;
     }
 
+    pub(crate) fn copy(&mut self, node_to_copy: Node) {
+        match self {
+            Node::Node4(node4) => panic!("should not be here"),
+            Node::Node16(node16) => node16.copy(node_to_copy),
+            _ => unimplemented!(),
+        }
+    }
+
     pub(crate) fn add_child(&mut self, node: Node, key_char: Option<u8>) {
         match self {
             Node::Node4(node4) => {
-                node4.add_child(node, key_char);
+                let should_grow = node4.should_grow();
+                if should_grow {
+                    let mut node16 = Node::Node16(Node16::new());
+                    let old_node = replace(self, node16);
+                    self.copy(old_node);
+                    self.add_child(node, key_char);
+                } else {
+                    node4.add_child(node, key_char);
+                }
             }
-            _ => {}
+            Node::Node16(node16) => {
+                let should_grow = node16.should_grow();
+                if should_grow {
+
+                } else {
+                    node16.add_child(node, key_char);
+                }
+            }
+            _ => unimplemented!(),
         }
     }
 
@@ -170,12 +190,22 @@ impl Node {
                 if let Some(key_char) = key.get(depth) {
                     node4.child_at(*key_char).is_some()
                 } else if key.len() == depth {
-                    node4.term_leaf.is_some()
+                    node4.term_leaf().is_some()
                 } else {
                     false
                 }
             }
-            _ => false,
+            Node::Node16(node16) => {
+                // if key exists
+                if let Some(key_char) = key.get(depth) {
+                    node16.child_at(*key_char).is_some()
+                } else if key.len() == depth {
+                    node16.term_leaf().is_some()
+                } else {
+                    false
+                }
+            }
+            _ => unimplemented!(),
         }
     }
 
@@ -187,8 +217,8 @@ impl Node {
                 if let Some(ch) = key.get(depth) {
                     node4.child_at(*ch)
                 } else if depth == key.len() {
-                    if let Some(child_node) = &node4.term_leaf {
-                        Some(child_node.borrow())
+                    if let Some(child_node) = &node4.term_leaf() {
+                        Some(child_node)
                     } else {
                         None
                     }
@@ -196,7 +226,21 @@ impl Node {
                     None
                 }
             }
-            _ => None,
+            Node::Node16(node16) => {
+                // if key exists
+                if let Some(ch) = key.get(depth) {
+                    node16.child_at(*ch)
+                } else if depth == key.len() {
+                    if let Some(child_node) = &node16.term_leaf() {
+                        Some(child_node)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            _ => unreachable!(),
         }
     }
 
@@ -209,7 +253,7 @@ impl Node {
                     node4.child_at_mut(*ch)
                 } else if key.len() == depth {
                     if node4.term_leaf.is_some() {
-                        Some(node4.term_leaf.as_mut().unwrap())
+                        Some(node4.term_leaf_mut().unwrap())
                     } else {
                         None
                     }
@@ -217,37 +261,55 @@ impl Node {
                     None
                 }
             }
-            _ => None,
+            Node::Node16(node16) => {
+                // if key exists
+                if let Some(ch) = key.get(depth) {
+                    node16.child_at_mut(*ch)
+                } else if key.len() == depth {
+                    if node16.term_leaf().is_some() {
+                        Some(node16.term_leaf_mut().unwrap())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            _ => unimplemented!(),
         }
     }
 
     pub(crate) fn prefix_len(&self) -> usize {
         match self {
-            Node::Node4(node) => node.prefix_len(),
-            _ => 0,
+            Node::Node4(node4) => node4.prefix_len(),
+            Node::Node16(node16) => node16.prefix_len(),
+            _ => unimplemented!(),
         }
     }
 
     pub(crate) fn partial(&self) -> &[u8] {
         match self {
-            Node::Node4(node) => node.partial(),
+            Node::Node4(node4) => node4.partial(),
+            Node::Node16(node16) => node16.partial(),
             _ => unimplemented!(),
         }
     }
 
-    fn children(&self) -> Vec<(Option<u8>, &Node)> {
+    pub(crate) fn children(&self) -> Vec<(Option<u8>, &Node)> {
         match self {
-            Node::Node4(node) => node.children(),
+            Node::Node4(node4) => node4.children(),
+            Node::Node16(node16) => node16.children(),
             _ => unimplemented!(),
         }
     }
+}
 
-    pub(crate) fn max_leaf_index(&self) -> usize {
+impl Display for Node {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            Node::Node4(node) => node.max_leaf_index(),
-            Node::Node16(node16) => node16.max_leaf_index(),
-            Node::Node256(node256) => node256.max_leaf_index(),
-            _ => panic!("Should not be here"),
+            Node::Node4(node4) => write!(f, "{}", node4),
+            Node::Node16(node16) => write!(f, "{}", node16),
+            node => write!(f, "{:?}", node),
         }
     }
 }
