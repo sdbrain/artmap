@@ -1,8 +1,9 @@
-use crate::{Node, Node16, Node256, NodeMeta, MAX_PREFIX};
+use crate::{Node, Node16, Node256, NodeMeta, MAX_PREFIX, Node32};
 use std::borrow::{Borrow, BorrowMut};
 use std::cmp::min;
 use std::fmt::{Display, Error, Formatter};
 use std::mem::replace;
+use xi_rope::compare::{ne_idx, ne_idx_rev};
 
 impl Node {
     pub(crate) fn key_char(key: &[u8], depth: usize) -> Option<u8> {
@@ -14,13 +15,7 @@ impl Node {
     }
 
     fn match_key(&self, key: &[u8], max_match_len: usize, depth: usize) -> Option<usize> {
-        // TODO fix this once compilation errors are fixed
-        //        let one = &self.meta.partial[0..max_match_len];
-        //        let two = &key[depth..];
-        //        ne_idx(one, two)
-
         let meta = self.get_meta();
-
         let mut idx = 0;
         while idx < max_match_len {
             if meta.partial[idx] != key[depth + idx] {
@@ -82,28 +77,6 @@ impl Node {
         }
     }
 
-    fn get_meta(&self) -> &NodeMeta {
-        match self {
-            Node::Node4(node4) => &node4.meta,
-            Node::Node16(node16) => &node16.meta,
-            Node::Node256(node256) => &node256.meta,
-            _ => {
-                panic!("Prefix len is not applicable for node of this type");
-            }
-        }
-    }
-
-    fn get_meta_mut(&mut self) -> &mut NodeMeta {
-        match self {
-            Node::Node4(node4) => &mut node4.meta,
-            Node::Node16(node16) => &mut node16.meta,
-            Node::Node256(node256) => &mut node256.meta,
-            _ => {
-                panic!("Prefix len is not applicable for node of this type");
-            }
-        }
-    }
-
     pub(crate) fn set_prefix_len(&mut self, new_prefix_len: usize) {
         self.get_meta_mut().prefix_len = new_prefix_len;
     }
@@ -115,8 +88,7 @@ impl Node {
     pub(crate) fn add_child(&mut self, node: Node, key_char: Option<u8>) {
         match self {
             Node::Node4(node4) => {
-                let should_grow = node4.should_grow();
-                if should_grow {
+                if node4.should_grow() {
                     let mut node16 = Node::Node16(Node16::new());
                     let old_node = replace(self, node16);
                     self.copy(old_node);
@@ -126,14 +98,23 @@ impl Node {
                 }
             }
             Node::Node16(node16) => {
-                let should_grow = node16.should_grow();
-                if should_grow {
+                if node16.should_grow() {
+                    let mut node32 = Node::Node32(Node32::new());
+                    let old_node = replace(self, node32);
+                    self.copy(old_node);
+                    self.add_child(node, key_char);
+                } else {
+                    node16.add_child(node, key_char);
+                }
+            }
+            Node::Node32(node32) => {
+                if node32.should_grow() {
                     let mut node256 = Node::Node256(Node256::new());
                     let old_node = replace(self, node256);
                     self.copy(old_node);
                     self.add_child(node, key_char);
                 } else {
-                    node16.add_child(node, key_char);
+                    node32.add_child(node, key_char);
                 }
             }
             Node::Node256(node256) => node256.add_child(node, key_char),
@@ -179,10 +160,35 @@ impl Node {
         }
     }
 
+    fn get_meta(&self) -> &NodeMeta {
+        match self {
+            Node::Node4(node4) => &node4.meta,
+            Node::Node16(node16) => &node16.meta,
+            Node::Node32(node32) => &node32.meta,
+            Node::Node256(node256) => &node256.meta,
+            _ => {
+                panic!("Prefix len is not applicable for node of this type");
+            }
+        }
+    }
+
+    fn get_meta_mut(&mut self) -> &mut NodeMeta {
+        match self {
+            Node::Node4(node4) => &mut node4.meta,
+            Node::Node16(node16) => &mut node16.meta,
+            Node::Node32(node32) => &mut node32.meta,
+            Node::Node256(node256) => &mut node256.meta,
+            _ => {
+                panic!("Prefix len is not applicable for node of this type");
+            }
+        }
+    }
+
     pub(crate) fn term_leaf(&self) -> Option<&Box<Node>> {
         match self {
             Node::Node4(node4) => node4.term_leaf(),
             Node::Node16(node16) => node16.term_leaf(),
+            Node::Node32(node32) => node32.term_leaf(),
             Node::Node256(node256) => node256.term_leaf(),
             _ => unimplemented!(),
         }
@@ -192,6 +198,7 @@ impl Node {
         match self {
             Node::Node4(node4) => node4.term_leaf_mut(),
             Node::Node16(node16) => node16.term_leaf_mut(),
+            Node::Node32(node32) => node32.term_leaf_mut(),
             Node::Node256(node256) => node256.term_leaf_mut(),
             _ => unimplemented!(),
         }
@@ -201,6 +208,7 @@ impl Node {
         match self {
             Node::Node4(node4) => node4.child_at(key),
             Node::Node16(node16) => node16.child_at(key),
+            Node::Node32(node32) => node32.child_at(key),
             Node::Node256(node256) => node256.child_at(key),
             _ => unimplemented!(),
         }
@@ -209,6 +217,7 @@ impl Node {
         match self {
             Node::Node4(node4) => node4.child_at_mut(key),
             Node::Node16(node16) => node16.child_at_mut(key),
+            Node::Node32(node32) => node32.child_at_mut(key),
             Node::Node256(node256) => node256.child_at_mut(key),
             _ => unimplemented!(),
         }
@@ -218,6 +227,7 @@ impl Node {
         match self {
             Node::Node4(node4) => node4.prefix_len(),
             Node::Node16(node16) => node16.prefix_len(),
+            Node::Node32(node32) => node32.prefix_len(),
             Node::Node256(node256) => node256.prefix_len(),
             _ => unimplemented!(),
         }
@@ -227,6 +237,7 @@ impl Node {
         match self {
             Node::Node4(node4) => node4.partial(),
             Node::Node16(node16) => node16.partial(),
+            Node::Node32(node32) => node32.partial(),
             Node::Node256(node256) => node256.partial(),
             _ => unimplemented!(),
         }
@@ -236,6 +247,7 @@ impl Node {
         match self {
             Node::Node4(node4) => node4.children(),
             Node::Node16(node16) => node16.children(),
+            Node::Node32(node32) => node32.children(),
             Node::Node256(node256) => node256.children(),
             _ => unimplemented!(),
         }
@@ -245,6 +257,7 @@ impl Node {
         match self {
             Node::Node4(node4) => node4.first(),
             Node::Node16(node16) => node16.first(),
+            Node::Node32(node32) => node32.first(),
             Node::Node256(node256) => node256.first(),
             _ => unimplemented!(),
         }
@@ -254,6 +267,7 @@ impl Node {
         match self {
             Node::Node4(node4) => panic!("should not be here"),
             Node::Node16(node16) => node16.copy(node_to_copy),
+            Node::Node32(node32) => node32.copy(node_to_copy),
             Node::Node256(node256) => node256.copy(node_to_copy),
             _ => unimplemented!(),
         }
@@ -265,6 +279,7 @@ impl Display for Node {
         match self {
             Node::Node4(node4) => write!(f, "{}", node4),
             Node::Node16(node16) => write!(f, "{}", node16),
+            Node::Node32(node32) => write!(f, "{}", node32),
             Node::Node256(node256) => write!(f, "{}", node256),
             Node::Leaf(leaf) => write!(f, "{}", leaf),
             Node::None => write!(f, ""),

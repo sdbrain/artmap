@@ -12,6 +12,7 @@ enum Node {
     Leaf(Leaf),
     Node4(Node4),
     Node16(Node16),
+    Node32(Node32),
     //    Node48(Node48),
     Node256(Node256),
 }
@@ -46,6 +47,13 @@ struct Node16 {
     term_leaf: Option<Box<Node>>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct Node32 {
+    meta: NodeMeta,
+    children: Vec<(u8, Node)>,
+    term_leaf: Option<Box<Node>>,
+}
+
 //#[derive(Debug, Clone)]
 //struct Node48 {}
 
@@ -59,6 +67,7 @@ struct Node256 {
 mod art;
 mod leaf;
 mod node;
-mod node16;
-mod node256;
 mod node4;
+mod node16;
+mod node32;
+mod node256;

@@ -1,9 +1,11 @@
-use crate::{Art, Leaf, Node, Node16, Node4, NodeMeta, MAX_PREFIX};
 use std::borrow::{Borrow, BorrowMut};
 use std::cmp::min;
 use std::mem::replace;
 use std::ops::DerefMut;
+
 use xi_rope::compare::ne_idx;
+
+use crate::{Art, Leaf, MAX_PREFIX, Node, Node16, Node4, NodeMeta};
 
 impl Art {
     pub fn new() -> Self {
@@ -241,11 +243,13 @@ impl Art {
 //
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{Art, Leaf, Node, Node16, Node4, NodeMeta, MAX_PREFIX};
     use std::collections::VecDeque;
-    use std::fs::{read, File};
+    use std::fs::{File, read};
     use std::io::{BufRead, BufReader};
+
+    use crate::{Art, Leaf, MAX_PREFIX, Node, Node16, Node4, NodeMeta};
+
+    use super::*;
 
     fn _insert(art: &mut Art, items: &Vec<&str>) {
         items.iter().for_each(|item| {
@@ -407,6 +411,7 @@ mod tests {
                     let st = std::str::from_utf8(res.unwrap()).unwrap();
                 }
             }
+            print_art(&art);
         };
         let items = [
             "Congo",
@@ -416,21 +421,21 @@ mod tests {
         ]
             .to_vec();
         tfn(&items);
-        let items = ["Ac", "Acropolis", "Acrux"].to_vec();
-        tfn(&items);
-        let items = ["A", "AMD", "AMDs"].to_vec();
-        tfn(&items);
-        let items = [
-            "daddy",
-            "dagger",
-            "daguerreotype",
-            "daguerreotypes",
-            "daguerreotyped",
-            "daguerreotype\'s",
-            "daguerreotyping",
-        ]
-            .to_vec();
-        tfn(&items);
+//        let items = ["Ac", "Acropolis", "Acrux"].to_vec();
+//        tfn(&items);
+//        let items = ["A", "AMD", "AMDs"].to_vec();
+//        tfn(&items);
+//        let items = [
+//            "daddy",
+//            "dagger",
+//            "daguerreotype",
+//            "daguerreotypes",
+//            "daguerreotyped",
+//            "daguerreotype\'s",
+//            "daguerreotyping",
+//        ]
+//            .to_vec();
+//        tfn(&items);
 
         //        assert_eq!(art.len(), 2);
         //
