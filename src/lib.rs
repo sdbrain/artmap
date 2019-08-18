@@ -43,6 +43,7 @@ struct Node4 {
 #[derive(Debug, Clone, PartialEq)]
 struct Node16 {
     meta: NodeMeta,
+    keys: Vec<u8>,
     children: Vec<(u8, Node)>,
     term_leaf: Option<Box<Node>>,
 }
@@ -50,6 +51,7 @@ struct Node16 {
 #[derive(Debug, Clone, PartialEq)]
 struct Node32 {
     meta: NodeMeta,
+    keys: Vec<u8>,
     children: Vec<(u8, Node)>,
     term_leaf: Option<Box<Node>>,
 }
@@ -67,7 +69,7 @@ struct Node256 {
 mod art;
 mod leaf;
 mod node;
-mod node4;
 mod node16;
-mod node32;
 mod node256;
+mod node32;
+mod node4;

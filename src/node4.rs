@@ -9,16 +9,16 @@ impl Node4 {
     }
 
     pub(crate) fn child_at(&self, key: u8) -> Option<&Node> {
-        match self.children.iter().find(|n|n.0 == key) {
+        match self.children.iter().find(|n| n.0 == key) {
             Some(item) => Some(item.1.borrow()),
-            None => None
+            None => None,
         }
     }
 
     pub(crate) fn child_at_mut(&mut self, key: u8) -> Option<&mut Node> {
-        match self.children.iter_mut().find(|n|n.0 == key) {
+        match self.children.iter_mut().find(|n| n.0 == key) {
             Some(item) => Some(item.1.borrow_mut()),
-            None => None
+            None => None,
         }
     }
 

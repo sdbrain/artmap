@@ -1,4 +1,4 @@
-use crate::{Node, Node16, Node256, NodeMeta, MAX_PREFIX, Node32};
+use crate::{Node, Node16, Node256, Node32, NodeMeta, MAX_PREFIX};
 use std::borrow::{Borrow, BorrowMut};
 use std::cmp::min;
 use std::fmt::{Display, Error, Formatter};

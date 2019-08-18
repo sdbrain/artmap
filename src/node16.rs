@@ -10,6 +10,7 @@ impl Node16 {
                 prefix_len: 0,
                 partial: Vec::with_capacity(MAX_PREFIX),
             },
+            keys: Vec::with_capacity(16),
             children: Vec::with_capacity(16),
             term_leaf: None,
         }
@@ -37,6 +38,12 @@ impl Node16 {
             Some(current_char) => {
                 self.children.push((current_char, node));
                 self.children.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+
+                // TODO fix this once the performance benefit has been established
+                self.keys = vec![0u8; 32];
+                for x in self.keys().iter().enumerate() {
+                    self.keys[x.0] = *x.1;
+                }
             }
             None => {
                 // key char would be None in the case of leaf nodes.
@@ -86,7 +93,33 @@ impl Node16 {
         self.meta.prefix_len
     }
 
+    #[cfg(target_arch = "x86_64")]
+    #[target_feature(enable = "avx2")]
+    pub(crate) unsafe fn find_index_avx(&self, key: u8) -> Option<usize> {
+        use std::arch::x86_64::*;
+        let key = _mm256_set1_epi8(key as i8);
+        let keys = _mm256_loadu_si256(self.keys.as_slice().as_ptr() as *const _);
+        let cmp = _mm256_cmpeq_epi8(key, keys);
+        let mask = _mm256_movemask_epi8(cmp);
+        let tz = mask.trailing_zeros();
+
+        if tz < 31 {
+            Some(tz as usize)
+        } else {
+            None
+        }
+    }
+
     fn find_index(&self, key: u8) -> Option<usize> {
+        #[cfg(target_arch = "x86_64")]
+        {
+            if is_x86_feature_detected!("avx2") {
+                return unsafe { self.find_index_avx(key) };
+            } else if is_x86_feature_detected!("sse4.2") {
+                unimplemented!()
+            }
+        }
+
         match self.children.binary_search_by(|x| x.0.cmp(&key)) {
             Err(E) => None,
             Ok(index) => Some(index),
@@ -144,16 +177,29 @@ impl Display for Node16 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use xi_rope::compare::ne_idx;
 
     #[test]
     fn test_child_at() {
         let mut node16 = Node16::new();
         node16.add_child(Node::None, Some(1));
-        node16.add_child(Node::None, Some(2));
-        node16.add_child(Node::None, Some(4));
-
-        let res = node16.child_at(1);
-        assert_eq!(res, Some(&Node::None));
-        println!("&res = {:#?}", &res);
+        println!("&node16 = {:#?}", &node16);
+        //        for i in 32..100 {
+        //            node16.add_child(Node::None, Some(i));
+        //        }
+        //        println!("node16.children().len() = {:#?}", node16.children().len());
+        //
+        ////        let res = ne_idx(vec![2u8;32].as_slice(), vec![2u8;32].as_slice());
+        ////        println!("&res = {:#?}", &res);
+        //        for i in 0..32 {
+        //            node16.find_index(i);
+        //        }
+        //        node16.find_index(50);
+        //        let res = node16.child_at(1);
+        //        let res = node16.child_at(2);
+        //        let res = node16.child_at(4);
+        //        let res = node16.child_at(5);
+        //        assert_eq!(res, Some(&Node::None));
+        //        println!("&res = {:#?}", &res);
     }
 }

@@ -5,7 +5,7 @@ use std::ops::DerefMut;
 
 use xi_rope::compare::ne_idx;
 
-use crate::{Art, Leaf, MAX_PREFIX, Node, Node16, Node4, NodeMeta};
+use crate::{Art, Leaf, Node, Node16, Node4, NodeMeta, MAX_PREFIX};
 
 impl Art {
     pub fn new() -> Self {
@@ -62,9 +62,9 @@ impl Art {
                 // prefix does not match, stop
                 if prefix_len
                     != min(
-                    min(MAX_PREFIX, current.prefix_len()),
-                    current.partial().len(),
-                )
+                        min(MAX_PREFIX, current.prefix_len()),
+                        current.partial().len(),
+                    )
                 {
                     break;
                 }
@@ -244,10 +244,10 @@ impl Art {
 #[cfg(test)]
 mod tests {
     use std::collections::VecDeque;
-    use std::fs::{File, read};
+    use std::fs::{read, File};
     use std::io::{BufRead, BufReader};
 
-    use crate::{Art, Leaf, MAX_PREFIX, Node, Node16, Node4, NodeMeta};
+    use crate::{Art, Leaf, Node, Node16, Node4, NodeMeta, MAX_PREFIX};
 
     use super::*;
 
@@ -419,23 +419,23 @@ mod tests {
             "Congregationalist's",
             "Congregationalists",
         ]
-            .to_vec();
+        .to_vec();
         tfn(&items);
-//        let items = ["Ac", "Acropolis", "Acrux"].to_vec();
-//        tfn(&items);
-//        let items = ["A", "AMD", "AMDs"].to_vec();
-//        tfn(&items);
-//        let items = [
-//            "daddy",
-//            "dagger",
-//            "daguerreotype",
-//            "daguerreotypes",
-//            "daguerreotyped",
-//            "daguerreotype\'s",
-//            "daguerreotyping",
-//        ]
-//            .to_vec();
-//        tfn(&items);
+        //        let items = ["Ac", "Acropolis", "Acrux"].to_vec();
+        //        tfn(&items);
+        //        let items = ["A", "AMD", "AMDs"].to_vec();
+        //        tfn(&items);
+        //        let items = [
+        //            "daddy",
+        //            "dagger",
+        //            "daguerreotype",
+        //            "daguerreotypes",
+        //            "daguerreotyped",
+        //            "daguerreotype\'s",
+        //            "daguerreotyping",
+        //        ]
+        //            .to_vec();
+        //        tfn(&items);
 
         //        assert_eq!(art.len(), 2);
         //
@@ -728,6 +728,7 @@ mod tests {
                 let line = line.unwrap();
                 let line = line.trim();
                 let res = art.search(&line.as_bytes().to_vec());
+                println!("&line = {:#?}", &line);
                 assert_eq!(res, Some(line.as_bytes()));
             }
         }
