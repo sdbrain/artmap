@@ -28,6 +28,8 @@ pub fn main() {
         let st = line.unwrap();
         let st = st.as_bytes().to_vec();
         let res = map.search(&st);
-        println!("&res = {:#?}", &res);
     }
+    println!("Finished searching");
+    let mut buffer = String::new();
+    stdin().read_line(&mut buffer).expect("could not read");
 }

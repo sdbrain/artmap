@@ -51,6 +51,13 @@ impl Node256 {
         self.children.len() + leaf_count
     }
 
+    pub(crate) fn first(&self) -> &Node {
+        self.children.iter().find(|x| match x {
+            Node::None => false,
+            node=> true
+        }).unwrap()
+    }
+
     pub(crate) fn children(&self) -> Vec<(Option<u8>, &Node)> {
         let mut res: Vec<(Option<u8>, &Node)> = self
             .children
@@ -98,7 +105,12 @@ impl Node256 {
     }
 
     pub(crate) fn child_at(&self, key: u8) -> Option<&Node> {
-        self.children.get(key as usize)
+        let res = self.children.get(key as usize).unwrap();
+        let res = match res {
+            Node::None => None,
+            _ => Some(res)
+        };
+        res
     }
 
     pub(crate) fn child_at_mut(&mut self, key: u8) -> Option<&mut Node> {

@@ -60,9 +60,9 @@ impl Art {
                 // prefix does not match, stop
                 if prefix_len
                     != min(
-                        min(MAX_PREFIX, current.prefix_len()),
-                        current.partial().len(),
-                    )
+                    min(MAX_PREFIX, current.prefix_len()),
+                    current.partial().len(),
+                )
                 {
                     break;
                 }
@@ -183,7 +183,7 @@ impl Art {
                             let new_partial: Vec<u8> = leaf
                                 .key
                                 .iter()
-                                .skip(depth + current_prefix_len)
+                                .skip(depth + current_prefix_len + 1)
                                 .take(min(current.prefix_len(), MAX_PREFIX))
                                 .map(|e| *e)
                                 .collect();
@@ -250,7 +250,6 @@ mod tests {
     fn _insert(art: &mut Art, items: &Vec<&str>) {
         items.iter().for_each(|item| {
             art.insert(Vec::from(item.as_bytes()), Vec::from(item.as_bytes()));
-            print_art(&art);
             println!("{}", "=".repeat(10));
         });
     }
@@ -268,7 +267,6 @@ mod tests {
         items.iter().for_each(|item| {
             let x: Vec<u8> = item.as_bytes().iter().map(|x| key_fn(*x)).collect();
             art.insert(Vec::from(item.as_bytes()), x);
-            print_art(&art);
             println!("{}", "=".repeat(10));
         });
     }
@@ -394,8 +392,6 @@ mod tests {
         for key in keys.iter() {
             art.insert(vec![*key], vec![*key]);
         }
-        println!("&art = {:#?}", &art);
-        print_art(&art);
     }
 
     #[test]
@@ -418,7 +414,7 @@ mod tests {
             "Congregationalist's",
             "Congregationalists",
         ]
-        .to_vec();
+            .to_vec();
         tfn(&items);
         let items = ["Ac", "Acropolis", "Acrux"].to_vec();
         tfn(&items);
@@ -433,7 +429,7 @@ mod tests {
             "daguerreotype\'s",
             "daguerreotyping",
         ]
-        .to_vec();
+            .to_vec();
         tfn(&items);
 
         //        assert_eq!(art.len(), 2);
@@ -711,7 +707,6 @@ mod tests {
         let mut art = Art::new();
         insert_from_file(&mut art, f_name);
         print_art(&art);
-        // TODO add asserts
     }
 
     //
@@ -720,8 +715,6 @@ mod tests {
         let f_name = "/tmp/words.txt";
         let mut art = Art::new();
         insert_from_file(&mut art, f_name);
-        print_art(&art);
-
         // check if you can find all the words
         let fil = File::open(f_name).unwrap();
         let reader = BufReader::new(fil);
@@ -730,9 +723,7 @@ mod tests {
                 let line = line.unwrap();
                 let line = line.trim();
                 let res = art.search(&line.as_bytes().to_vec());
-                if res.is_none() {
-                    panic!("here")
-                }
+                assert_eq!(res, Some(line.as_bytes()));
             }
         }
     }
@@ -757,11 +748,6 @@ mod tests {
             let x = reader.read_line(&mut buffer);
             if x.is_err() || buffer.is_empty() {
                 break;
-            }
-            println!("&buffer = {:?}", &buffer);
-            if buffer.trim() == "daguerreotyping" {
-                print_art(&art);
-                println!("I am here");
             }
             art.insert(
                 buffer.trim().clone().as_bytes().to_vec(),

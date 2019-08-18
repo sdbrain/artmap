@@ -72,13 +72,10 @@ impl Node {
                 node => {
                     // if we have a node at term_leaf, assign tmp_node to that and continue
                     // else use the first element in the children list
-                    if self.term_leaf().is_some() {
-                        tmp_node = self.term_leaf().as_ref().unwrap();
+                    if node.term_leaf().is_some() {
+                        tmp_node = node.term_leaf().as_ref().unwrap();
                     } else {
-                        match self.children().first() {
-                            Some(child) => tmp_node = child.1.borrow(),
-                            None => panic!("Should not be here"),
-                        }
+                        tmp_node = node.first();
                     }
                 }
             }
@@ -240,6 +237,15 @@ impl Node {
             Node::Node4(node4) => node4.children(),
             Node::Node16(node16) => node16.children(),
             Node::Node256(node256) => node256.children(),
+            _ => unimplemented!(),
+        }
+    }
+
+    pub(crate) fn first(&self) -> &Node {
+        match self {
+            Node::Node4(node4) => node4.first(),
+            Node::Node16(node16) => node16.first(),
+            Node::Node256(node256) => node256.first(),
             _ => unimplemented!(),
         }
     }

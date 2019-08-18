@@ -4,43 +4,21 @@ use std::fmt::{Display, Error, Formatter};
 use std::mem::replace;
 
 impl Node4 {
-    fn find_index(&self, key: u8) -> Option<usize> {
-        let mut index = 0usize;
-        for c_key in self.keys().iter() {
-            if *c_key == key {
-                return Some(index);
-            }
-            index += 1;
-        }
-        None
-    }
-
     pub(crate) fn should_grow(&self) -> bool {
         self.keys().len() == 4
     }
 
     pub(crate) fn child_at(&self, key: u8) -> Option<&Node> {
-        let index = self.find_index(key);
-        // no match found
-        if index.is_none() {
-            return None;
-        }
-
-        match self.children.get(index.unwrap()) {
+        match self.children.iter().find(|n|n.0 == key) {
             Some(item) => Some(item.1.borrow()),
-            None => None,
+            None => None
         }
     }
 
     pub(crate) fn child_at_mut(&mut self, key: u8) -> Option<&mut Node> {
-        let index = self.find_index(key);
-        // no match found
-        if index.is_none() {
-            return None;
-        }
-        match self.children.get_mut(index.unwrap()) {
+        match self.children.iter_mut().find(|n|n.0 == key) {
             Some(item) => Some(item.1.borrow_mut()),
-            None => None,
+            None => None
         }
     }
 
@@ -50,6 +28,10 @@ impl Node4 {
             leaf_count += 1;
         }
         self.children.len() + leaf_count
+    }
+
+    pub(crate) fn first(&self) -> &Node {
+        self.children.first().unwrap().1.borrow()
     }
 
     pub(crate) fn children(&self) -> Vec<(Option<u8>, &Node)> {

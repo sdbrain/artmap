@@ -53,6 +53,10 @@ impl Node16 {
         self.children.len() + leaf_count
     }
 
+    pub(crate) fn first(&self) -> &Node {
+        self.children.first().unwrap().1.borrow()
+    }
+
     pub(crate) fn children(&self) -> Vec<(Option<u8>, &Node)> {
         let mut res: Vec<(Option<u8>, &Node)> =
             self.children.iter().map(|n| (Some(n.0), &n.1)).collect();
@@ -83,7 +87,7 @@ impl Node16 {
     }
 
     fn find_index(&self, key: u8) -> Option<usize> {
-        match self.children.binary_search_by(|x| key.cmp(&x.0)) {
+        match self.children.binary_search_by(|x| x.0.cmp(&key)) {
             Err(E) => None,
             Ok(index) => Some(index),
         }
@@ -134,5 +138,22 @@ impl Display for Node16 {
                 .collect::<Vec<char>>(),
             leaf = self.term_leaf().is_some()
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_child_at() {
+        let mut node16 = Node16::new();
+        node16.add_child(Node::None, Some(1));
+        node16.add_child(Node::None, Some(2));
+        node16.add_child(Node::None, Some(4));
+
+        let res = node16.child_at(1);
+        assert_eq!(res, Some(&Node::None));
+        println!("&res = {:#?}", &res);
     }
 }
