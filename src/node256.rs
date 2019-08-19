@@ -16,7 +16,7 @@ impl Node256 {
 
     pub(crate) fn copy(&mut self, node_to_copy: Node) {
         match node_to_copy {
-            Node::Node32(node32) => {
+            Node::Node48(node32) => {
                 replace(&mut self.meta, node32.meta);
                 replace(&mut self.term_leaf, node32.term_leaf);
 

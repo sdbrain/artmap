@@ -1,11 +1,11 @@
-use crate::{Node, Node32, NodeMeta, MAX_PREFIX};
+use crate::{Node, Node48, NodeMeta, MAX_PREFIX};
 use std::borrow::{Borrow, BorrowMut};
 use std::fmt::{Display, Error, Formatter};
 use std::mem::replace;
 
-impl Node32 {
+impl Node48 {
     pub(crate) fn new() -> Self {
-        Node32 {
+        Node48 {
             meta: NodeMeta {
                 prefix_len: 0,
                 partial: Vec::with_capacity(MAX_PREFIX),
@@ -150,7 +150,7 @@ impl Node32 {
     }
 }
 
-impl Display for Node32 {
+impl Display for Node48 {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(
             f,
@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn test_child_at() {
-        let mut node32 = Node32::new();
+        let mut node32 = Node48::new();
         node32.add_child(Node::None, Some(1));
         node32.add_child(Node::None, Some(2));
         node32.add_child(Node::None, Some(4));

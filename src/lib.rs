@@ -12,7 +12,7 @@ enum Node {
     Leaf(Leaf),
     Node4(Node4),
     Node16(Node16),
-    Node32(Node32),
+    Node48(Node48),
     //    Node48(Node48),
     Node256(Node256),
 }
@@ -49,7 +49,7 @@ struct Node16 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct Node32 {
+struct Node48 {
     meta: NodeMeta,
     keys: Vec<u8>,
     children: Vec<(u8, Node)>,
