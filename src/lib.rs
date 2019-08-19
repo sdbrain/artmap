@@ -71,5 +71,5 @@ mod leaf;
 mod node;
 mod node16;
 mod node256;
-mod node32;
+mod node48;
 mod node4;
