@@ -2,6 +2,8 @@ use crate::{Node, Node32, NodeMeta, MAX_PREFIX};
 use std::borrow::{Borrow, BorrowMut};
 use std::fmt::{Display, Error, Formatter};
 use std::mem::replace;
+use itertools::Itertools;
+use hashbrown::HashMap;
 
 impl Node32 {
     pub(crate) fn new() -> Self {
@@ -10,8 +12,7 @@ impl Node32 {
                 prefix_len: 0,
                 partial: Vec::with_capacity(MAX_PREFIX),
             },
-            keys: Vec::with_capacity(32),
-            children: Vec::with_capacity(32),
+            children: HashMap::new(),
             term_leaf: None,
         }
     }
@@ -20,15 +21,18 @@ impl Node32 {
         match node_to_copy {
             Node::Node16(node16) => {
                 replace(&mut self.meta, node16.meta);
-                replace(&mut self.children, node16.children);
                 replace(&mut self.term_leaf, node16.term_leaf);
+
+                for child in node16.children {
+                    self.children.insert(child.0, child.1);
+                }
             }
             _ => panic!("only copying from node16 is allowed"),
         }
     }
 
     pub(crate) fn should_grow(&self) -> bool {
-        self.children.len() == 32
+        self.children.len() == 64
     }
 
     // TODO ===================== Refactor and share between Node4 and Node32 =====
@@ -36,14 +40,7 @@ impl Node32 {
     pub(crate) fn add_child(&mut self, node: Node, key_char: Option<u8>) {
         match key_char {
             Some(current_char) => {
-                self.children.push((current_char, node));
-                self.children.sort_unstable_by(|a, b| a.0.cmp(&b.0));
-
-                // TODO fix this once the performance benefit has been established
-                self.keys = vec![0u8; 32];
-                for x in self.keys().iter().enumerate() {
-                    self.keys[x.0] = *x.1;
-                }
+                self.children.insert(current_char, node);
             }
             None => {
                 // key char would be None in the case of leaf nodes.
@@ -61,12 +58,15 @@ impl Node32 {
     }
 
     pub(crate) fn first(&self) -> &Node {
-        self.children.first().unwrap().1.borrow()
+        let mut x = self.children.keys().collect_vec();
+        x.sort_unstable();
+
+        self.children.get(x.first().unwrap()).unwrap()
     }
 
     pub(crate) fn children(&self) -> Vec<(Option<u8>, &Node)> {
         let mut res: Vec<(Option<u8>, &Node)> =
-            self.children.iter().map(|n| (Some(n.0), &n.1)).collect();
+            self.children.iter().map(|n| (Some(*n.0), n.1)).collect();
         if self.term_leaf().is_some() {
             res.push((None, self.term_leaf.as_ref().unwrap()));
         }
@@ -74,7 +74,7 @@ impl Node32 {
     }
 
     pub(crate) fn keys(&self) -> Vec<u8> {
-        self.children.iter().map(|i| i.0).collect()
+        self.children.iter().map(|i| *i.0).collect()
     }
 
     pub(crate) fn term_leaf_mut(&mut self) -> Option<&mut Box<Node>> {
@@ -93,58 +93,16 @@ impl Node32 {
         self.meta.prefix_len
     }
 
-    #[cfg(target_arch = "x86_64")]
-    #[target_feature(enable = "avx2")]
-    pub(crate) unsafe fn find_index_avx(&self, key: u8) -> Option<usize> {
-        use std::arch::x86_64::*;
-        let key = _mm256_set1_epi8(key as i8);
-        let keys = _mm256_loadu_si256(self.keys.as_slice().as_ptr() as *const _);
-        let cmp = _mm256_cmpeq_epi8(key, keys);
-        let mask = _mm256_movemask_epi8(cmp);
-        let tz = mask.trailing_zeros();
-
-        if tz < 31 {
-            Some(tz as usize)
-        } else {
-            None
-        }
-    }
-
-    fn find_index(&self, key: u8) -> Option<usize> {
-        #[cfg(target_arch = "x86_64")]
-        {
-            if is_x86_feature_detected!("avx2") {
-                return unsafe { self.find_index_avx(key) };
-            } else if is_x86_feature_detected!("sse4.2") {
-                unimplemented!()
-            }
-        }
-        match self.children.binary_search_by(|x| x.0.cmp(&key)) {
-            Err(E) => None,
-            Ok(index) => Some(index),
-        }
-    }
     pub(crate) fn child_at(&self, key: u8) -> Option<&Node> {
-        let index = self.find_index(key);
-        if index.is_none() {
-            return None;
-        }
-
-        match self.children.get(index.unwrap()) {
-            Some(item) => Some(item.1.borrow()),
+        match self.children.get(&key) {
+            Some(item) => Some(item.borrow()),
             None => None,
         }
     }
 
     pub(crate) fn child_at_mut(&mut self, key: u8) -> Option<&mut Node> {
-        let index = self.find_index(key);
-        // no match found
-        if index.is_none() {
-            return None;
-        }
-
-        match self.children.get_mut(index.unwrap()) {
-            Some(item) => Some(item.1.borrow_mut()),
+        match self.children.get_mut(&key) {
+            Some(item) => Some(item.borrow_mut()),
             None => None,
         }
     }

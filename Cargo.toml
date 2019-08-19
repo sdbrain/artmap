@@ -8,10 +8,11 @@ edition = "2018"
 
 [dependencies]
 xi-rope = "0.3.0"
+itertools = "0.8.0"
+hashbrown = "0.6.0"
 
 [dev-dependencies]
 fnv = "1.0.6"
-hashbrown = "0.5.0"
 criterion = "0.2.11"
 radix_trie = "0.1.4"
 

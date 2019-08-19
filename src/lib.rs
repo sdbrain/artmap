@@ -1,3 +1,5 @@
+use hashbrown::HashMap;
+
 const MAX_PREFIX: usize = 8;
 
 #[derive(Debug)]
@@ -51,8 +53,7 @@ struct Node16 {
 #[derive(Debug, Clone, PartialEq)]
 struct Node32 {
     meta: NodeMeta,
-    keys: Vec<u8>,
-    children: Vec<(u8, Node)>,
+    children: HashMap<u8, Node>,
     term_leaf: Option<Box<Node>>,
 }
 

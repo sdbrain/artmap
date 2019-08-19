@@ -99,8 +99,8 @@ impl Node {
             }
             Node::Node16(node16) => {
                 if node16.should_grow() {
-                    let mut node32 = Node::Node32(Node32::new());
-                    let old_node = replace(self, node32);
+                    let mut node256 = Node::Node256(Node256::new());
+                    let old_node = replace(self, node256);
                     self.copy(old_node);
                     self.add_child(node, key_char);
                 } else {

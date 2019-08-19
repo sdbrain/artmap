@@ -16,12 +16,12 @@ impl Node256 {
 
     pub(crate) fn copy(&mut self, node_to_copy: Node) {
         match node_to_copy {
-            Node::Node32(node32) => {
-                replace(&mut self.meta, node32.meta);
-                replace(&mut self.term_leaf, node32.term_leaf);
+            Node::Node16(node) => {
+                replace(&mut self.meta, node.meta);
+                replace(&mut self.term_leaf, node.term_leaf);
 
                 // copy the children
-                for (key, val) in node32.children {
+                for (key, val) in node.children {
                     let key = key as usize;
                     self.children[key] = val;
                 }
