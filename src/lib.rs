@@ -51,8 +51,10 @@ struct Node16 {
 #[derive(Debug, Clone, PartialEq)]
 struct Node48 {
     meta: NodeMeta,
+    // 256
     keys: Vec<u8>,
-    children: Vec<(u8, Node)>,
+    // 48
+    children: Vec<Node>,
     term_leaf: Option<Box<Node>>,
 }
 

@@ -10,8 +10,8 @@ impl Node48 {
                 prefix_len: 0,
                 partial: Vec::with_capacity(MAX_PREFIX),
             },
-            keys: Vec::with_capacity(32),
-            children: Vec::with_capacity(32),
+            keys: Vec::with_capacity(256),
+            children: Vec::with_capacity(48),
             term_leaf: None,
         }
     }
@@ -28,7 +28,9 @@ impl Node48 {
     }
 
     pub(crate) fn should_grow(&self) -> bool {
-        self.children.len() == 32
+        self.children.iter().filter(|x| if let Node::None = x {
+            false
+        } else {true}).count() == 48
     }
 
     // TODO ===================== Refactor and share between Node4 and Node32 =====
@@ -36,14 +38,9 @@ impl Node48 {
     pub(crate) fn add_child(&mut self, node: Node, key_char: Option<u8>) {
         match key_char {
             Some(current_char) => {
+
                 self.children.push((current_char, node));
                 self.children.sort_unstable_by(|a, b| a.0.cmp(&b.0));
-
-                // TODO fix this once the performance benefit has been established
-                self.keys = vec![0u8; 32];
-                for x in self.keys().iter().enumerate() {
-                    self.keys[x.0] = *x.1;
-                }
             }
             None => {
                 // key char would be None in the case of leaf nodes.
@@ -57,10 +54,13 @@ impl Node48 {
         if self.term_leaf.is_some() {
             leaf_count += 1;
         }
-        self.children.len() + leaf_count
+        self.children.iter().filter(|x| if let Node::None = x {
+            false
+        } else {true}).count() + leaf_count
     }
 
     pub(crate) fn first(&self) -> &Node {
+
         self.children.first().unwrap().1.borrow()
     }
 
@@ -74,7 +74,7 @@ impl Node48 {
     }
 
     pub(crate) fn keys(&self) -> Vec<u8> {
-        self.children.iter().map(|i| i.0).collect()
+        self.keys.iter().filter(|x| **x > 0).collect()
     }
 
     pub(crate) fn term_leaf_mut(&mut self) -> Option<&mut Box<Node>> {
@@ -93,32 +93,8 @@ impl Node48 {
         self.meta.prefix_len
     }
 
-    #[cfg(target_arch = "x86_64")]
-    #[target_feature(enable = "avx2")]
-    pub(crate) unsafe fn find_index_avx(&self, key: u8) -> Option<usize> {
-        use std::arch::x86_64::*;
-        let key = _mm256_set1_epi8(key as i8);
-        let keys = _mm256_loadu_si256(self.keys.as_slice().as_ptr() as *const _);
-        let cmp = _mm256_cmpeq_epi8(key, keys);
-        let mask = _mm256_movemask_epi8(cmp);
-        let tz = mask.trailing_zeros();
-
-        if tz < 31 {
-            Some(tz as usize)
-        } else {
-            None
-        }
-    }
 
     fn find_index(&self, key: u8) -> Option<usize> {
-        #[cfg(target_arch = "x86_64")]
-        {
-            if is_x86_feature_detected!("avx2") {
-                return unsafe { self.find_index_avx(key) };
-            } else if is_x86_feature_detected!("sse4.2") {
-                unimplemented!()
-            }
-        }
         match self.children.binary_search_by(|x| x.0.cmp(&key)) {
             Err(E) => None,
             Ok(index) => Some(index),
