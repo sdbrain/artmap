@@ -111,14 +111,14 @@ impl Node32 {
     }
 
     fn find_index(&self, key: u8) -> Option<usize> {
-        #[cfg(target_arch = "x86_64")]
-        {
-            if is_x86_feature_detected!("avx2") {
-                return unsafe { self.find_index_avx(key) };
-            } else if is_x86_feature_detected!("sse4.2") {
-                unimplemented!()
-            }
-        }
+        //#[cfg(target_arch = "x86_64")]
+        //{
+            //if is_x86_feature_detected!("avx2") {
+                //return unsafe { self.find_index_avx(key) };
+            //} else if is_x86_feature_detected!("sse4.2") {
+                //unimplemented!()
+            //}
+        //}
         match self.children.binary_search_by(|x| x.0.cmp(&key)) {
             Err(E) => None,
             Ok(index) => Some(index),
