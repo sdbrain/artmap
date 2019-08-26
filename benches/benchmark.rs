@@ -13,9 +13,9 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::rc::Rc;
 
-// "/usr/share/dict/words"
-static PATH: &str = "/tmp/words.txt";
-const SEARCH_LIMIT: usize = 1000;
+static PATH: &str = "/usr/share/dict/words";
+static PATH_RANDOM_NOS: &str = "data/random_nos.txt";
+const SEARCH_LIMIT: usize = 80000;
 
 fn insert_radix_trie() {
     let mut map = Trie::new();
@@ -153,13 +153,64 @@ fn search_hash_map_b(c: &mut Criterion) {
     });
 }
 
+fn search_integer_simple_trie(map: Rc<Art>) {
+    let input = File::open(PATH_RANDOM_NOS).unwrap();
+    let input = BufReader::new(input);
+    for line in input.lines() {
+        let val= line.unwrap();
+        map.search(&val.as_bytes());
+    }
+}
+
+fn search_simple_trie_integers_b(c: &mut Criterion) {
+    let mut map = Art::new();
+    for i in 0..1000000 {
+        let st = format!("{}", i).as_bytes().to_vec();
+        map.insert(st.clone(), st);
+    }
+    let map = Rc::new(map);
+    c.bench_function("search_integer_simple_trie", move |b| {
+        b.iter_batched(
+            || map.clone(),
+            |map| search_integer_simple_trie(map),
+            BatchSize::LargeInput,
+        )
+    });
+}
+
+fn search_integer_hash_map(map: Rc<BTreeMap<i32, i32>>) {
+    let input = File::open(PATH_RANDOM_NOS).unwrap();
+    let input = BufReader::new(input);
+    for line in input.lines() {
+        let val: i32 = line.unwrap().parse().unwrap();
+        map.get(&val);
+    }
+}
+
+fn search_hash_map_integers_b(c: &mut Criterion) {
+    let mut map = BTreeMap::new();
+    for i in 0..1000000 {
+        map.insert(i, i);
+    }
+    let map = Rc::new(map);
+    c.bench_function("search_integer_hashmap", move |b| {
+        b.iter_batched(
+            || map.clone(),
+            |map| search_integer_hash_map(map),
+            BatchSize::LargeInput,
+        )
+    });
+}
+
 criterion_group!(
     benches,
-    //insert_simple_trie_b,
-    //insert_radix_trie_b,
-    //insert_hash_map_b,
+//    insert_simple_trie_b,
+//    insert_radix_trie_b,
+//    insert_hash_map_b,
     search_simple_trie_b,
     search_radix_trie_b,
     search_hash_map_b,
+//      search_hash_map_integers_b,
+//      search_simple_trie_integers_b
 );
 criterion_main!(benches);

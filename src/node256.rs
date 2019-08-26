@@ -1,6 +1,7 @@
 use crate::{Node, Node256, NodeMeta, MAX_PREFIX};
 use std::fmt::{Display, Error, Formatter};
 use std::mem::replace;
+use std::collections::HashMap;
 
 impl Node256 {
     pub(crate) fn new() -> Self {
@@ -16,14 +17,23 @@ impl Node256 {
 
     pub(crate) fn copy(&mut self, node_to_copy: Node) {
         match node_to_copy {
-            Node::Node48(node32) => {
-                replace(&mut self.meta, node32.meta);
-                replace(&mut self.term_leaf, node32.term_leaf);
+            Node::Node48(node) => {
+                replace(&mut self.meta, node.meta);
+                replace(&mut self.term_leaf, node.term_leaf);
 
                 // copy the children
-                for (key, val) in node32.children {
-                    let key = key as usize;
-                    self.children[key] = val;
+                let mut map: HashMap<i8, usize> = HashMap::new();
+                for (key, key_index) in node.keys.iter().enumerate() {
+                    if *key_index >= 0 {
+                        map.insert(*key_index, key);
+                    }
+                }
+
+                let mut idx = 0i8;
+                for child in node.children {
+                    let key = map.get(&idx).unwrap();
+                    self.children[*key] = child;
+                    idx += 1;
                 }
             }
             _ => panic!("only copying from node16 is allowed"),

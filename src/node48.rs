@@ -10,7 +10,7 @@ impl Node48 {
                 prefix_len: 0,
                 partial: Vec::with_capacity(MAX_PREFIX),
             },
-            keys: Vec::with_capacity(256),
+            keys: vec![-1; 256],
             children: Vec::with_capacity(48),
             term_leaf: None,
         }
@@ -20,27 +20,26 @@ impl Node48 {
         match node_to_copy {
             Node::Node16(node16) => {
                 replace(&mut self.meta, node16.meta);
-                replace(&mut self.children, node16.children);
                 replace(&mut self.term_leaf, node16.term_leaf);
+
+                for child in node16.children {
+                    self.children.push(child.1);
+                    self.keys[child.0 as usize] = (self.children.len() - 1) as i8;
+                }
             }
             _ => panic!("only copying from node16 is allowed"),
         }
     }
 
     pub(crate) fn should_grow(&self) -> bool {
-        self.children.iter().filter(|x| if let Node::None = x {
-            false
-        } else {true}).count() == 48
+        self.children.len() == 48
     }
-
-    // TODO ===================== Refactor and share between Node4 and Node32 =====
 
     pub(crate) fn add_child(&mut self, node: Node, key_char: Option<u8>) {
         match key_char {
             Some(current_char) => {
-
-                self.children.push((current_char, node));
-                self.children.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+                self.children.push(node);
+                self.keys[current_char as usize] = (self.children.len() - 1) as i8;
             }
             None => {
                 // key char would be None in the case of leaf nodes.
@@ -54,27 +53,36 @@ impl Node48 {
         if self.term_leaf.is_some() {
             leaf_count += 1;
         }
-        self.children.iter().filter(|x| if let Node::None = x {
-            false
-        } else {true}).count() + leaf_count
+        self.children.len() + leaf_count
     }
 
     pub(crate) fn first(&self) -> &Node {
-
-        self.children.first().unwrap().1.borrow()
+        let mut key_index = 0;
+        for key in self.keys.iter().enumerate() {
+            if *key.1 >= 0 {
+                key_index = key.0;
+                break;
+            }
+        }
+        self.children.get(key_index).unwrap().borrow()
     }
 
     pub(crate) fn children(&self) -> Vec<(Option<u8>, &Node)> {
-        let mut res: Vec<(Option<u8>, &Node)> =
-            self.children.iter().map(|n| (Some(n.0), &n.1)).collect();
-        if self.term_leaf().is_some() {
-            res.push((None, self.term_leaf.as_ref().unwrap()));
+        let mut result: Vec<(Option<u8>, &Node)> = Vec::new();
+        for key in self.keys.iter().enumerate() {
+            if *key.1 >= 0 {
+                let key_index = *key.1;
+                result.push((Some(key.0 as u8), self.children.get(key_index as usize).unwrap().borrow()))
+            }
         }
-        res
+        if self.term_leaf().is_some() {
+            result.push((None, self.term_leaf.as_ref().unwrap()));
+        }
+        result
     }
 
     pub(crate) fn keys(&self) -> Vec<u8> {
-        self.keys.iter().filter(|x| **x > 0).collect()
+        self.keys.iter().enumerate().filter(|x| *x.1 >= 0).map(|x| x.0 as u8).collect()
     }
 
     pub(crate) fn term_leaf_mut(&mut self) -> Option<&mut Box<Node>> {
@@ -94,33 +102,26 @@ impl Node48 {
     }
 
 
-    fn find_index(&self, key: u8) -> Option<usize> {
-        match self.children.binary_search_by(|x| x.0.cmp(&key)) {
-            Err(E) => None,
-            Ok(index) => Some(index),
-        }
-    }
     pub(crate) fn child_at(&self, key: u8) -> Option<&Node> {
-        let index = self.find_index(key);
-        if index.is_none() {
-            return None;
+        let key_index = self.keys[key as usize];
+        if key_index < 0 {
+            return None
         }
 
-        match self.children.get(index.unwrap()) {
-            Some(item) => Some(item.1.borrow()),
+        match self.children.get(key_index as usize) {
+            Some(item) => Some(item.borrow()),
             None => None,
         }
     }
 
     pub(crate) fn child_at_mut(&mut self, key: u8) -> Option<&mut Node> {
-        let index = self.find_index(key);
-        // no match found
-        if index.is_none() {
-            return None;
+        let key_index = self.keys[key as usize];
+        if key_index < 0 {
+            return None
         }
 
-        match self.children.get_mut(index.unwrap()) {
-            Some(item) => Some(item.1.borrow_mut()),
+        match self.children.get_mut(key_index as usize) {
+            Some(item) => Some(item.borrow_mut()),
             None => None,
         }
     }
@@ -130,7 +131,7 @@ impl Display for Node48 {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(
             f,
-            "Node32({clen}) {keys:?} {keys_ch:?} ({leaf}) - ({plen}) [{partial:?}]",
+            "Node48({clen}) {keys:?} {keys_ch:?} ({leaf}) - ({plen}) [{partial:?}]",
             clen = self.children().len(),
             keys = self.keys(),
             keys_ch = self
@@ -155,13 +156,14 @@ mod tests {
 
     #[test]
     fn test_child_at() {
-        let mut node32 = Node48::new();
-        node32.add_child(Node::None, Some(1));
-        node32.add_child(Node::None, Some(2));
-        node32.add_child(Node::None, Some(4));
+        let mut node48 = Node48::new();
+        node48.add_child(Node::None, Some(66));
+        node48.add_child(Node::None, Some(67));
+        node48.add_child(Node::None, Some(75));
 
-        let res = node32.child_at(1);
+        let res = node48.child_at(66);
         assert_eq!(res, Some(&Node::None));
         println!("&res = {:#?}", &res);
+        println!("&node48 = {}", &node48);
     }
 }

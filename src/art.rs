@@ -27,6 +27,8 @@ impl Art {
         if one.len() != two.len() {
             false
         } else {
+//            one == two
+            // TODO enable after benchmarking
             // use simd to compare..
             let res = ne_idx(one, two);
             match res {
@@ -708,7 +710,7 @@ mod tests {
     //
     #[test]
     fn test_small_batch_insert() {
-        let f_name = "/tmp/words.txt";
+        let f_name = "/usr/share/dict/words";
         let mut art = Art::new();
         insert_from_file(&mut art, f_name);
         print_art(&art);
@@ -717,7 +719,7 @@ mod tests {
     //
     #[test]
     fn test_search() {
-        let f_name = "/tmp/words.txt";
+        let f_name = "/usr/share/dict/words";
         let mut art = Art::new();
         insert_from_file(&mut art, f_name);
         // check if you can find all the words

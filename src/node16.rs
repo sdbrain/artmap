@@ -39,8 +39,7 @@ impl Node16 {
                 self.children.push((current_char, node));
                 self.children.sort_unstable_by(|a, b| a.0.cmp(&b.0));
 
-                // TODO fix this once the performance benefit has been established
-                self.keys = vec![0u8; 32];
+                self.keys = vec![0u8; 16];
                 for x in self.keys().iter().enumerate() {
                     self.keys[x.0] = *x.1;
                 }
@@ -110,13 +109,33 @@ impl Node16 {
         }
     }
 
+    #[cfg(target_arch = "x86_64")]
+    #[target_feature(enable = "sse4.2")]
+    pub(crate) unsafe fn find_index_sse(&self, key: u8) -> Option<usize> {
+        use std::arch::x86_64::*;
+        let key = _mm_set1_epi8(key as i8);
+        let keys = _mm_load_si128(self.keys.as_slice().as_ptr() as *const _);
+        let cmp = _mm_cmpeq_epi8(key, keys);
+        let mask = _mm_movemask_epi8(cmp);
+        let tz = mask.trailing_zeros();
+
+        if tz < 31 {
+            Some(tz as usize)
+        } else {
+            None
+        }
+    }
+
     fn find_index(&self, key: u8) -> Option<usize> {
         #[cfg(target_arch = "x86_64")]
         {
+//            if is_x86_feature_detected!("sse4.2") {
+//                return unsafe { self.find_index_sse(key) };
+//            }
             if is_x86_feature_detected!("avx2") {
                 return unsafe { self.find_index_avx(key) };
             } else if is_x86_feature_detected!("sse4.2") {
-                unimplemented!()
+                return unsafe { self.find_index_sse(key) };
             }
         }
 
