@@ -1,7 +1,6 @@
 use crate::{Node, Node16, NodeMeta, MAX_PREFIX};
 use std::borrow::{Borrow, BorrowMut};
 use std::fmt::{Display, Error, Formatter};
-use std::mem::replace;
 
 impl Node16 {
     pub(crate) fn new() -> Self {
@@ -19,9 +18,9 @@ impl Node16 {
     pub(crate) fn copy(&mut self, node_to_copy: Node) {
         match node_to_copy {
             Node::Node4(node4) => {
-                replace(&mut self.meta, node4.meta);
-                replace(&mut self.children, node4.children);
-                replace(&mut self.term_leaf, node4.term_leaf);
+                self.meta = node4.meta;
+                self.children = node4.children;
+                self.term_leaf = node4.term_leaf;
             }
             _ => panic!("only copying from node4 is allowed"),
         }

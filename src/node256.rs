@@ -1,6 +1,5 @@
 use crate::{Node, Node256, NodeMeta, MAX_PREFIX};
 use std::fmt::{Display, Error, Formatter};
-use std::mem::replace;
 use std::collections::HashMap;
 
 impl Node256 {
@@ -18,8 +17,8 @@ impl Node256 {
     pub(crate) fn copy(&mut self, node_to_copy: Node) {
         match node_to_copy {
             Node::Node48(node) => {
-                replace(&mut self.meta, node.meta);
-                replace(&mut self.term_leaf, node.term_leaf);
+                self.meta = node.meta;
+                self.term_leaf = node.term_leaf;
 
                 // copy the children
                 let mut map: HashMap<i8, usize> = HashMap::new();
@@ -29,6 +28,9 @@ impl Node256 {
                     }
                 }
 
+                // for (key, child) in node.children.drain(1..).enumerate() {
+                //     self.children[key] = child;
+                // }
                 let mut idx = 0i8;
                 for child in node.children {
                     let key = map.get(&idx).unwrap();

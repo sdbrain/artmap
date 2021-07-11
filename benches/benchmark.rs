@@ -5,10 +5,8 @@ extern crate art_rs;
 use art_rs::Art;
 use criterion::Criterion;
 use criterion::{black_box, BatchSize, Benchmark};
-use fnv::FnvHashMap;
-use hashbrown::HashMap;
 use radix_trie::Trie;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::rc::Rc;
@@ -27,7 +25,7 @@ fn insert_radix_trie() {
     }
 }
 
-fn insert_simple_trie() {
+fn insert_art() {
     let mut map = Art::new();
     let input = File::open(PATH).unwrap();
     let input = BufReader::new(input);
@@ -48,15 +46,15 @@ fn insert_hash_map() {
 }
 
 fn insert_radix_trie_b(c: &mut Criterion) {
-    c.bench_function("radix_trie", |b| b.iter(|| insert_radix_trie()));
+    c.bench_function("insert_radix_trie", |b| b.iter(|| insert_radix_trie()));
 }
 
-fn insert_simple_trie_b(c: &mut Criterion) {
-    c.bench_function("simple_trie", |b| b.iter(|| insert_simple_trie()));
+fn insert_art_b(c: &mut Criterion) {
+    c.bench_function("insert_art", |b| b.iter(|| insert_art()));
 }
 
 fn insert_hash_map_b(c: &mut Criterion) {
-    c.bench_function("simple_hashmap", |b| b.iter(|| insert_hash_map()));
+    c.bench_function("insert_simple_hashmap", |b| b.iter(|| insert_hash_map()));
 }
 
 fn search_simple_trie(map: Rc<Art>) {
@@ -72,7 +70,7 @@ fn search_simple_trie(map: Rc<Art>) {
     }
 }
 
-fn search_simple_trie_b(c: &mut Criterion) {
+fn search_art_b(c: &mut Criterion) {
     let mut map = Art::new();
     let input = File::open(PATH).unwrap();
     let input = BufReader::new(input);
@@ -83,7 +81,7 @@ fn search_simple_trie_b(c: &mut Criterion) {
     }
     let map = Rc::new(map);
 
-    c.bench_function("search_simple_trie", move |b| {
+    c.bench_function("search_art", move |b| {
         b.iter_batched(
             || map.clone(),
             |map| search_simple_trie(map),
@@ -123,7 +121,7 @@ fn search_radix_trie_b(c: &mut Criterion) {
     });
 }
 
-fn search_hash_map(map: Rc<BTreeMap<String, String>>) {
+fn search_hash_map(map: Rc<HashMap<String, String>>) {
     let input = File::open(PATH).unwrap();
     let input = BufReader::new(input);
     for (index, line) in input.lines().enumerate() {
@@ -136,7 +134,7 @@ fn search_hash_map(map: Rc<BTreeMap<String, String>>) {
 }
 
 fn search_hash_map_b(c: &mut Criterion) {
-    let mut map = BTreeMap::new();
+    let mut map = HashMap::new();
     let input = File::open(PATH).unwrap();
     let input = BufReader::new(input);
     for line in input.lines() {
@@ -162,14 +160,14 @@ fn search_integer_simple_trie(map: Rc<Art>) {
     }
 }
 
-fn search_simple_trie_integers_b(c: &mut Criterion) {
+fn search_art_integers_b(c: &mut Criterion) {
     let mut map = Art::new();
     for i in 0..1000000 {
         let st = format!("{}", i).as_bytes().to_vec();
         map.insert(st.clone(), st);
     }
     let map = Rc::new(map);
-    c.bench_function("search_integer_simple_trie", move |b| {
+    c.bench_function("search_integer_art", move |b| {
         b.iter_batched(
             || map.clone(),
             |map| search_integer_simple_trie(map),
@@ -204,13 +202,13 @@ fn search_hash_map_integers_b(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-//    insert_simple_trie_b,
-//    insert_radix_trie_b,
-//    insert_hash_map_b,
-    search_simple_trie_b,
+   insert_art_b,
+   insert_radix_trie_b,
+   insert_hash_map_b,
+    search_art_b,
     search_radix_trie_b,
     search_hash_map_b,
-//      search_hash_map_integers_b,
-//      search_simple_trie_integers_b
+     search_hash_map_integers_b,
+     search_art_integers_b
 );
 criterion_main!(benches);
